@@ -494,3 +494,14 @@ it('does not acknowledge delivery when the authoritative KV revision is unavaila
   expect((await request('notify', 'POST', notification)).status).toBe(503);
   expect(ApnsSender.prototype.send).not.toHaveBeenCalled();
 });
+
+it('fans out delivery without exposing content and retains tap identity', async () => {
+  await registerActivity();
+  const event = { ...notification, kind: 'delivery' as const };
+  expect((await request('notify', 'POST', event)).status).toBe(200);
+  const push = vi.mocked(ApnsSender.prototype.send).mock.calls.at(-1)![0];
+  expect(push.payload).toMatchObject({ kind: 'delivery', session_id: event.session_id, sealed: event.sealed });
+  expect(push.payload).toMatchObject({ aps: { 'interruption-level': 'active' } });
+  expect((await request('notify', 'POST', event)).status).toBe(200);
+  expect(sent()).toEqual(['banner']);
+});

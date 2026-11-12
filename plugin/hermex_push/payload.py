@@ -2,7 +2,7 @@
 
 Notification event (``POST /installs/{install_key}/notify``)::
 
-    {"v": 1, "kind": "reply" | "approval" | "clarify" | "turn_error",
+    {"v": 1, "kind": "reply" | "approval" | "clarify" | "turn_error" | "delivery",
      "event_id": <32 hex>, "thread_id": <32 hex>, "collapse_id": <32 hex>,
      "session_id": str, "source": "bot" | "webui" | "other", "is_subagent": bool,
      "sent_at": <unix seconds>, "sealed": <base64> | null}
@@ -33,7 +33,7 @@ from .keys import Keys
 from .privacy import keyed_id, seal
 
 PAYLOAD_VERSION = 1
-NOTIFY_KINDS = frozenset({"reply", "approval", "clarify", "turn_error"})
+NOTIFY_KINDS = frozenset({"reply", "approval", "clarify", "turn_error", "delivery"})
 PROGRESS_STATUSES = frozenset({"running", "waiting", "done", "failed"})
 
 TITLE_CHARS = 80
