@@ -64,6 +64,7 @@ def test_declared_versions_match_the_loaded_version():
 
 
 def test_register_declares_platform_and_every_manifest_hook():
+    pytest.importorskip("gateway.platforms.send_targets")
     plugin = _load(ROOT / "__init__.py", "hermex_push_plugin_under_test")
     ctx = FakeCtx()
     plugin.register(ctx)
@@ -206,7 +207,7 @@ def test_restart_needs_the_dashboard_sign_in(monkeypatch):
     client = TestClient(web_server.app, base_url="http://127.0.0.1")
 
     for gated in (False, True):
-        monkeypatch.setattr(web_server.app.state, "auth_required", gated, raising=False)
+        monkeypatch.setitem(web_server.app.state._state, "auth_required", gated)
         assert client.post("/api/plugins/hermex-push/restart").status_code == 401, f"gated={gated}"
 
     assert timers == [] and calls == []

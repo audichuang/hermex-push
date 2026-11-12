@@ -92,7 +92,7 @@ def test_preview_clips_after_flattening():
 
 def test_unknown_kind_and_status_are_rejected(keys):
     with pytest.raises(ValueError):
-        notify_event(kind="system", session_id="s", event_ref="r", source="bot", is_subagent=False, keys=keys, preview=None)
+        notify_event(kind="unknown", session_id="s", event_ref="r", source="bot", is_subagent=False, keys=keys, preview=None)
     with pytest.raises(ValueError):
         progress_event(session_id="s", source="bot", is_subagent=False, keys=keys, status="idle", tool=None,
                        tool_calls=0, started_at=0)

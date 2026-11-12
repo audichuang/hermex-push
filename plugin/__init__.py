@@ -22,17 +22,22 @@ from hermex_push import PLATFORM_NAME, RELAY_URL_ENV  # noqa: E402
 from hermex_push.adapter import (  # noqa: E402
     PLATFORM_HINT, check_requirements, env_enablement, is_connected, make_adapter,
 )
+from hermex_push.delivery import standalone_send, parse_target
 from hermex_push.hooks import HermexPush  # noqa: E402
 from hermex_push.scopes import serve_every_profile_in_host  # noqa: E402
 
 
 def register(ctx) -> None:
     """Plugin entry point called by the Hermes plugin system, once per profile scope."""
+    from gateway.platforms.send_targets import StandaloneSendPolicy
+
     ctx.register_platform(
         name=PLATFORM_NAME, label="Hermex", adapter_factory=make_adapter, check_fn=check_requirements,
         is_connected=is_connected, required_env=[RELAY_URL_ENV],
         install_hint="pip install cryptography   # already a Hermes dependency",
-        env_enablement_fn=env_enablement, emoji="📱", pii_safe=True, platform_hint=PLATFORM_HINT,
+        env_enablement_fn=env_enablement, cron_deliver_env_var="HERMEX_HOME_CHANNEL",
+        standalone_sender_fn=standalone_send,
+        standalone_send=StandaloneSendPolicy(all_sends=True, media=True), parse_target_ref_fn=parse_target, emoji="📱", pii_safe=True, platform_hint=PLATFORM_HINT,
     )
     profile = ""
     try:

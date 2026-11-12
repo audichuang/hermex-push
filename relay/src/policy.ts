@@ -8,7 +8,7 @@ export type Delivery =
 
 // An approval is moot after the host's five-minute approval timeout, a question after its one-hour
 // clarify timeout; a reply or failure is still news an hour later.
-const holds: Record<NotificationEvent['kind'], number> = { approval: 300, clarify: 3600, reply: 3600, turn_error: 3600 };
+const holds: Record<NotificationEvent['kind'], number> = { approval: 300, clarify: 3600, reply: 3600, turn_error: 3600, delivery: 3600 };
 
 /**
  * All per-device delivery etiquette lives here; no storage, clocks, or network calls.
@@ -17,12 +17,12 @@ const holds: Record<NotificationEvent['kind'], number> = { approval: 300, clarif
  */
 export function deliveryPolicy(event: PushEvent, device: Device, hasActivity: boolean, now: number): Delivery {
   if (event.kind === 'progress') return hasActivity ? { type: 'activity' } : { type: 'none' };
-  if (hasActivity && event.kind !== 'approval' && event.kind !== 'clarify') return { type: 'none' };
+  if (hasActivity && event.kind !== 'approval' && event.kind !== 'clarify' && event.kind !== 'delivery') return { type: 'none' };
   const prefs = device.prefs;
   if (event.is_subagent && prefs.mute_subagents) return { type: 'none' };
   if (event.kind === 'reply' && !repliesAllowed(event.session_id, prefs, now)) return { type: 'none' };
   return {
-    type: 'banner', interruption: event.kind === 'reply' ? 'active' : 'time-sensitive',
+    type: 'banner', interruption: ['reply', 'delivery'].includes(event.kind) ? 'active' : 'time-sensitive',
     collapseId: event.collapse_id, threadId: event.thread_id, preview: prefs.previews, hold: holds[event.kind],
   };
 }

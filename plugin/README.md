@@ -62,7 +62,7 @@ keys through the dashboard login.
 `POST {relay_url}/installs/{install_key}/notify`, JSON. Ciphertext only; the relay never sees
 a title or body. See `hermex_push/payload.py` for the authoritative shapes.
 
-Notification (`kind` is `reply`, `approval`, `clarify` or `turn_error`):
+Notification (`kind` is `reply`, `approval`, `clarify`, `turn_error` or `delivery`):
 
 ```json
 {"v": 1, "kind": "reply", "event_id": "<32 hex>", "thread_id": "<32 hex>", "collapse_id": "<32 hex>",
@@ -196,8 +196,48 @@ would rewrite, are refused with 400 before git runs.
 `HERMEX_PUSH_RELAY_URL` must be https; plain http is accepted only to loopback (local capture),
 because the install key travels in the URL path. Redirects from the relay are refused.
 
-Cron `deliver: hermex` and the `input`, `delivery` and `system` kinds are V1.1
-([hermex#566](https://github.com/uzairansaruzi/hermex/issues/566)).
+## Explicit delivery (0.8.0, hermex#566)
+
+Plugin 0.8.0 requires Hermes 0.23.1 or newer. It does not create a gateway home
+channel when push is paired. Use `hermex:default` as an explicit target, or set
+`HERMEX_HOME_CHANNEL=default` for bare `deliver: hermex`. Comma-separated targets
+work, for example `deliver: "discord:123456789,hermex"`. A separate-process
+Profile needs the plugin installed and enabled in that Profile too.
+
+`HERMEX_HOME_CHANNEL` is cron routing only: by itself it does not opt into gateway
+shutdown/startup/disk/database broadcasts. If a previous test build saved
+`platforms.hermex.home_channel` in config.yaml, remove that block to restore this
+default; the plugin does not delete user configuration. A deliberately configured
+gateway home channel keeps Hermes' normal broadcast behavior. Interim sends are
+ignored without a snapshot. Hermes' shared home-target resolver still includes
+Hermex in `deliver: all` and may use it as the fallback for an origin-less
+`deliver: origin` when the cron home environment variable is set. No new
+explicit-only core routing policy is claimed here.
+
+An explicit send saves complete delivered text in its Profile's SessionDB as a
+**delivery snapshot** (`hermex-delivery-*`, source `gui`), then posts one sealed
+`delivery` event. This snapshot is separate from the original agent transcript
+and is not inserted into cron run history. The task name is force-redacted before
+it reaches the snapshot title or banner subtitle; redaction failure replaces the
+name. The body is a plain-text preview clipped to 400 characters.
+
+Cron's live adapter call receives text before Hermes sends attachments separately.
+It therefore defers before any I/O to the scheduler's standalone sender, which
+receives text and the complete media list together. Both gateway-present and
+standalone runs deliver text, with one attachment-unsupported note in the same
+snapshot and preview. No attachment path is included, no extra media notice push
+is sent, and native media-only adapter methods return an unsupported result.
+A long result stays complete on the host. Snapshots follow normal session
+retention/deletion; a failed relay send leaves its saved output available.
+
+App Store 2.1 decrypts the new kind, keeps its sealed English title and opens the
+snapshot as a conversation. A companion app change opens the Tasks output reader.
+An older relay explicitly answers `ignored` before fan-out; only that response
+converts the same event and seal to `reply`. That compatibility path needs Replies
+on. The old relay suppresses a reply while a Live Activity for the same session is
+registered, so a reply compatibility event does not bypass that policy. Delivery
+snapshots have their own session keys; a Live Activity for the original agent
+session does not match them. Previews off still preserves navigation.
 
 ## Development
 
@@ -206,6 +246,7 @@ uv venv .venv && uv pip install --python .venv/bin/python pytest cryptography fa
 .venv/bin/python -m pytest plugin -q
 ```
 
+`test_delivery.py` (the actual host redactor and gateway contracts),
 `test_restart_needs_the_dashboard_sign_in`, the git route tests that run git, and
 `test_the_agent_host_knows_the_built_in_fetchers` need hermes-agent importable; they skip in the
 venv above. To run them against hermes-agent itself, use a hermes-agent virtualenv, for example
@@ -220,3 +261,15 @@ Earlier versions cannot update a subdirectory install, so reinstall there with
 `hermes plugins install https://github.com/uzairansaruzi/hermex-push.git/plugin --force --enable`.
 Either way the pairing keys survive, and the change takes effect once the Hermes processes that
 run agents restart.
+
+Manual Hermes 0.23.1 integration smoke (not collected by pytest or CI; disposable home only):
+
+```sh
+HERMES_HOME="$(mktemp -d /tmp/hermex-push-smoke.XXXXXX)" \
+  PYTHONPATH=<hermes-agent-source> <hermes-python> plugin/hermex_push_tests/e2e_cron_smoke.py
+```
+
+The model and relay are loopback HTTP fixtures; only Discord's network leaf is
+captured. The actual scheduler, agent, platform registry, live scheduler handoff and
+SessionDB run. The harness binds the owner-store context directly, so it does not
+claim gateway RPC admission, the daemon ticker, APNs or a physical-phone test.
