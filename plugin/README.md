@@ -224,11 +224,17 @@ name. The body is a plain-text preview clipped to 400 characters.
 Cron's live adapter call receives text before Hermes sends attachments separately.
 It therefore defers before any I/O to the scheduler's standalone sender, which
 receives text and the complete media list together. Both gateway-present and
-standalone runs deliver text, with one attachment-unsupported note in the same
+standalone runs that contain text deliver it with one attachment-unsupported note in the same
 snapshot and preview. No attachment path is included, no extra media notice push
 is sent, and native media-only adapter methods return an unsupported result.
 A long result stays complete on the host. Snapshots follow normal session
 retention/deletion; a failed relay send leaves its saved output available.
+
+Known limitation: an attachment-only cron result with no cleaned text in the live
+gateway lane (for example with `cron.wrap_response: false`) never reaches the
+text handoff. Hermes attempts native media, records the unsupported attachment
+error and does not try standalone, so no notification is sent. Include a short
+text result alongside MEDIA. This plugin does not alter that scheduler behavior.
 
 App Store 2.1 decrypts the new kind, keeps its sealed English title and opens the
 snapshot as a conversation. A companion app change opens the Tasks output reader.
