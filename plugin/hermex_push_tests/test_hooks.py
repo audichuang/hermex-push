@@ -335,3 +335,84 @@ def test_a_status_change_probes_and_a_watched_answer_restores_the_cadence(keys, 
     push.pre_tool_call(tool_name="search", session_id="s")  # five seconds after the last send
     progress = [(e["sent_at"] - 1000, e["status"]) for _, e in sender.events if e["kind"] == "progress"]
     assert progress == [(0, "running"), (30, "running"), (41, "waiting"), (42, "running"), (47, "running")]
+
+
+@pytest.mark.parametrize("result,expected", [("ignored", ["input", "clarify"]), ("accepted", ["input"]), ("no_activity", ["input"])])
+def test_human_input_real_sender_legacy_relay(keys, result, expected):
+    import json
+    import threading
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+    from hermex_push.relay import RelaySender
+
+    received, banners = [], []
+
+    class LegacyRelay(BaseHTTPRequestHandler):
+        def do_POST(self):
+            event = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
+            if event["kind"] != "progress":
+                received.append(event)
+                # Old relay: a registered same-session activity swallows reply,
+                # but clarify still requests attention.
+                if event["kind"] == "clarify":
+                    banners.append(event)
+            self.send_response(200)
+            self.end_headers()
+            self.wfile.write(json.dumps({"result": result if event["kind"] == "input" else "accepted"}).encode())
+
+        def log_message(self, *args):
+            pass
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), LegacyRelay)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    sender = RelaySender()
+    push = HermexPush(profile="work", sender=sender, keys_loader=lambda: keys,
+                      relay_url=lambda: f"http://127.0.0.1:{server.server_port}",
+                      schedule=lambda delay, fn: None, bot_name=lambda: "Hermes")
+    try:
+        push.on_human_input_request(kind="sudo", session_id="session", platform="desktop", request_id="request")
+        sender.wait_idle()
+        assert [e["kind"] for e in received] == expected
+        inner = unseal(received[0]["sealed"], preview_key=keys.preview_key, install_key=keys.install_key)
+        assert inner["request_id"] == "request"
+        assert inner["body"] == "The agent needs a sudo password."
+        if result == "ignored":
+            assert banners == [received[1]]
+            assert received[1] == {**received[0], "kind": "clarify"}
+    finally:
+        push.close()
+        server.shutdown()
+        server.server_close()
+
+
+def test_human_input_network_uncertainty_keeps_original_kind(keys):
+    import json
+    from hermex_push.relay import RelaySender
+    received = []
+    def post(url, body):
+        event = json.loads(body)
+        received.append(event)
+        raise TimeoutError("response lost")
+    sender = RelaySender(post=post, sleep=lambda _: None)
+    push = HermexPush(sender=sender, keys_loader=lambda: keys, relay_url=lambda: "http://localhost",
+                      schedule=lambda delay, fn: None)
+    try:
+        push.on_human_input_request(kind="secret", session_id="s", platform="desktop", request_id="r")
+        sender.wait_idle()
+        assert [e["kind"] for e in received if e["kind"] != "progress"] == ["input", "input"]
+    finally:
+        push.close()
+
+
+def test_input_observer_never_copies_prompts_or_answers_and_resumes(push, sender, keys):
+    push.on_human_input_request(kind="sudo", session_id="local-input", platform="gui", request_id="req",
+                               prompt="sudo SECRET=hidden command", password="never")
+    event = notifications(sender)[0]
+    assert event["kind"] == "input"
+    inner = unseal(event["sealed"], preview_key=keys.preview_key, install_key=keys.install_key)
+    assert inner["request_id"] == "req"
+    assert "hidden" not in str(inner) and "never" not in str(inner)
+    push.on_human_input_resolved(kind="sudo", session_id="local-input", outcome="answered", answer="never")
+    assert [e["status"] for _, e in sender.events if e["kind"] == "progress"] == ["waiting", "running"]
+    push.on_human_input_request(kind="clarify", session_id="local-input", platform="gui")
+    assert len(notifications(sender)) == 1

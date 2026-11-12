@@ -311,6 +311,31 @@ registered, so a reply compatibility event does not bypass that policy. Delivery
 snapshots have their own session keys; a Live Activity for the original agent
 session does not match them. Previews off still preserves navigation.
 
+## Input and system notifications (0.9.0, hermex#566)
+
+`input` observes Hermes' `on_human_input_request` / `on_human_input_resolved`
+hooks for sudo and secret requests. It seals a generic request description and
+request ID; prompts, passwords and answers are never copied. Sudo uses this
+observer in Hermes 0.23.1. Secret notification support is **incomplete**: the
+observer is ready, but Hermes' canonical and sidecar secret prompts do not
+emit these hooks. The
+plugin does not invent a secret tool or intercept its prompts.
+
+Explicit `hermex:system` sends use the same saved-output path as deliveries and
+emit `system`. No gateway home channel is added. The relay accepts both new
+kinds: input requests are time-sensitive; system banners are active. Both can
+banner during a Live Activity, respect subagent mute and preview preferences,
+and do not introduce new preference switches.
+
+Only an explicit HTTP `200` with `result: ignored` triggers compatibility:
+`system` becomes `reply`, and `input` becomes `clarify`. Every identifier,
+timestamp and the original seal stays unchanged. Network uncertainty, 5xx,
+and other successful responses never change the kind. The legacy relay
+suppresses `reply` for a session with a registered Live Activity, so using a
+reply for input would silently lose attention. `input` falls back to `clarify`
+to keep that attention banner. System compatibility follows the old Replies
+preference and Live Activity policy; snapshot session IDs remain separate.
+
 ## Development
 
 ```sh

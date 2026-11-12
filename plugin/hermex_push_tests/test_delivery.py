@@ -11,6 +11,8 @@ pytest.importorskip("agent.redact")
 from hermex_push import delivery
 from hermex_push.privacy import unseal
 
+REAL_DELIVER = delivery.RelaySender.deliver
+
 
 @pytest.fixture
 def host(monkeypatch, keys):
@@ -76,19 +78,32 @@ def test_empty_text_is_refused_before_persistence(host):
     assert not sessions and not events
 
 
-def test_old_relay_explicit_ignore_reuses_snapshot_as_reply(host, monkeypatch):
+@pytest.mark.parametrize("target,kind", [("default", "delivery"), ("system", "system")])
+def test_old_relay_explicit_ignore_reuses_snapshot_as_reply(host, monkeypatch, target, kind):
+    import json
     sessions, events = host
-    def old_relay(self, url, event, on_result=None):
+    def old_relay(url, body):
+        event = json.loads(body)
         events.append(event)
-        if on_result:
-            on_result("ignored")
-        return True
-    monkeypatch.setattr(delivery.RelaySender, "deliver", old_relay)
-    assert asyncio.run(delivery.standalone_send(None, "default", "Long report"))["success"]
-    assert [event["kind"] for event in events] == ["delivery", "reply"]
+        return 200, "ignored" if event["kind"] == kind else "accepted"
+    real_sender = delivery.RelaySender(post=old_relay, sleep=lambda _: None)
+    monkeypatch.setattr(type(real_sender), "deliver", REAL_DELIVER)
+    monkeypatch.setattr(delivery, "RelaySender", lambda: real_sender)
+    assert asyncio.run(delivery.standalone_send(None, target, "Long report"))["success"]
+    assert [event["kind"] for event in events] == [kind, "reply"]
     assert len(sessions) == 1
-    assert events[0]["session_id"] == events[1]["session_id"]
-    assert events[0]["sealed"] == events[1]["sealed"]
+    assert events[1] == {**events[0], "kind": "reply"}
+
+
+def test_explicit_system_target_keeps_full_snapshot_and_seal(host, keys):
+    sessions, events = host
+    assert delivery.parse_target("system") == ("system", None)
+    result = asyncio.run(delivery.standalone_send(None, "system", "System update"))
+    assert result["success"]
+    assert sessions[result["message_id"]]["assistant"] == "System update"
+    assert events[0]["kind"] == "system"
+    inner = unseal(events[0]["sealed"], preview_key=keys.preview_key, install_key=keys.install_key)
+    assert inner["title"] == "Reports · System"
 
 
 @pytest.mark.parametrize("text", ["Report text", "Report text " * 150])

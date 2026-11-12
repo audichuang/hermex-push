@@ -120,3 +120,25 @@ def test_enqueue_passes_on_result_to_the_drain_thread():
     assert sender.enqueue("https://r/installs/k/notify", {"kind": "progress"}, on_result=results.append)
     sender.wait_idle()
     assert results == ["no_activity"]
+
+
+
+def test_compatibility_requires_200_ignored_and_retries_only_compatible_event():
+    import json
+    for status, result in [(201, "ignored"), (200, "accepted"), (200, "no_activity"), (503, "ignored")]:
+        calls = []
+        def post(url, body):
+            calls.append(json.loads(body))
+            return status, result
+        RelaySender(post=post, sleep=lambda _: None).deliver("http://localhost", {"kind": "input"})
+        assert all(e["kind"] == "input" for e in calls)
+    calls = []
+    original = {"kind": "input", "event_id": "stable", "sealed": "unchanged", "sent_at": 100}
+    def post(url, body):
+        event = json.loads(body)
+        calls.append(event)
+        if len(calls) == 1:
+            return 200, "ignored"
+        return (503, "retry") if len(calls) == 2 else (200, "accepted")
+    assert RelaySender(post=post, sleep=lambda _: None).deliver("http://localhost", original)
+    assert calls == [original, {**original, "kind": "clarify"}, {**original, "kind": "clarify"}]

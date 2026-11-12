@@ -1,7 +1,7 @@
 name: hermex-push
 label: Hermex
 kind: platform
-version: 0.8.2
+version: 0.9.0
 description: >
   Push notifications for the Hermex iPhone app. On each turn boundary the
   plugin posts a sealed event (AES-256-GCM, encrypted on this host) to a
@@ -27,6 +27,8 @@ provides_hooks:
   - pre_approval_request
   - post_approval_response
   - subagent_start
+  - on_human_input_request
+  - on_human_input_resolved
 # Validated and surfaced only; hermes-agent already pins cryptography.
 python_dependencies:
   - cryptography
