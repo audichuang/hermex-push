@@ -505,3 +505,14 @@ it('fans out delivery without exposing content and retains tap identity', async 
   expect((await request('notify', 'POST', event)).status).toBe(200);
   expect(sent()).toEqual(['banner']);
 });
+
+it.each(['input', 'system'] as const)('fans out %s during a Live Activity and retains tap identity', async (kind) => {
+  await registerActivity();
+  const event = { ...notification, kind };
+  expect((await request('notify', 'POST', event)).status).toBe(200);
+  const push = vi.mocked(ApnsSender.prototype.send).mock.calls.at(-1)![0];
+  expect(push.payload).toMatchObject({ kind, session_id: event.session_id, sealed: event.sealed });
+  expect(push.payload).toMatchObject({ aps: { 'interruption-level': kind === 'input' ? 'time-sensitive' : 'active' } });
+  expect((await request('notify', 'POST', event)).status).toBe(200);
+  expect(sent()).toEqual(['banner']);
+});

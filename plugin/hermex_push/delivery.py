@@ -15,7 +15,6 @@ from .hooks import bot_name_for, relay_url_from_env
 from .keys import load_or_create_keys
 from .payload import notify_event, preview
 from .cron_delivery_context import current_delivery
-from .compat import compatibility_event
 from .relay import RelaySender, notify_url
 
 
@@ -23,7 +22,7 @@ MEDIA_NOTICE = "Attachments are not supported in Hermex; only text was delivered
 
 
 def parse_target(raw: str):
-    return (raw, None) if raw == "default" else None
+    return (raw, None) if raw in {"default", "system"} else None
 
 
 def _redact_name(name: str) -> str:
@@ -56,8 +55,8 @@ def _content(message: str, execution: Any, metadata: dict) -> tuple[str, str]:
 
 
 def _deliver(chat_id: str, message: str, metadata: dict, media_files: Any) -> dict:
-    if chat_id != "default":
-        return {"error": "Hermex delivery target is default"}
+    if chat_id not in {"default", "system"}:
+        return {"error": "Hermex targets are default (delivery) or system"}
     if not message.strip() and not media_files:
         return {"error": "Hermex cannot deliver empty text"}
     url = relay_url_from_env()
@@ -78,7 +77,7 @@ def _deliver(chat_id: str, message: str, metadata: dict, media_files: Any) -> di
         banner_body = MEDIA_NOTICE + "\n\n" + body
         body = (body.rstrip() + "\n\n" + MEDIA_NOTICE).lstrip()
     name = bot_name_for(profile)
-    kind = "delivery"
+    kind = "system" if chat_id == "system" else "delivery"
     sid = "hermex-delivery-" + uuid.uuid4().hex
     # Persist BEFORE notifying. A DB failure is a failed delivery, never a dead tap.
     db = acquire()
@@ -91,7 +90,7 @@ def _deliver(chat_id: str, message: str, metadata: dict, media_files: Any) -> di
         db.close()
     event = notify_event(kind=kind, session_id=sid, event_ref=sid, source="other", is_subagent=False,
                          keys=keys, preview=preview(
-                             title=f"{name} · Delivery",
+                             title=f"{name} · {'System' if kind == 'system' else 'Delivery'}",
                              bot_name=name, subtitle=task_name, body=banner_body,
                              profile="" if profile == "default" else profile))
     return _transmit(sid, event, keys, url)
@@ -102,12 +101,6 @@ def _transmit(sid, event, keys, url):
     result = []
     if not sender.deliver(notify_url(url, keys.install_key), event, result.append):
         return {"error": "Hermex relay did not acknowledge delivery; the saved output remains on the host"}
-    if result == ["ignored"]:
-        # V1 relays explicitly ignored the new kind BEFORE fan-out. Reuse this snapshot
-        # and its seal as a reply, so a plugin-only upgrade still reaches App Store 2.1.
-        legacy = compatibility_event(event)
-        if not sender.deliver(notify_url(url, keys.install_key), legacy):
-            return {"error": "Hermex relay did not acknowledge the compatible delivery"}
     return {"success": True, "message_id": sid}
 
 

@@ -34,13 +34,14 @@ CLARIFY_TOOL = "clarify"
 HOOK_NAMES = (
     "pre_llm_call", "post_llm_call", "on_session_end", "pre_tool_call", "post_tool_call",
     "pre_approval_request", "post_approval_response", "subagent_start",
+    "on_human_input_request", "on_human_input_resolved",
 )
 MAX_TRACKED_SESSIONS = 4096
 RELAY_URL_CACHE_SECONDS = 5.0
 # The English label after the bot's name in each sealed title; a reply is titled by the name
 # alone. Hermex builds the same title in the phone's language from ``kind`` and ``bot_name``, so
 # this English copy only shows on app builds that predate ``bot_name``.
-TITLE_LABELS = {"approval": "Approval needed", "clarify": "Question", "turn_error": "Turn failed"}
+TITLE_LABELS = {"approval": "Approval needed", "clarify": "Question", "turn_error": "Turn failed", "input": "Input needed"}
 
 
 def _root_dotenv_value(key: str) -> str:
@@ -393,6 +394,25 @@ class HermexPush:
             self._emit_progress(snapshot)
         except Exception:
             logger.warning("hermex-push: post_approval_response failed", exc_info=True)
+
+    def on_human_input_request(self, *, kind: str = "", session_id: str = "", platform: str = "",
+                               request_id: str = "", **_: Any) -> None:
+        if kind not in {"sudo", "secret"}:
+            return  # approval/clarify already have their own observers
+        try:
+            with self._lock:
+                self._remember_platform(session_id, platform)
+                snapshot = self._progress.waiting(session_id, self._now())
+            self._emit_progress(snapshot)
+            self._notify("input", session_id, request_id,
+                         body="The agent needs a sudo password." if kind == "sudo"
+                         else "The agent needs a secret.", request_id=request_id)
+        except Exception:
+            logger.warning("hermex-push: human input notification failed", exc_info=True)
+
+    def on_human_input_resolved(self, *, kind: str = "", session_id: str = "", **_: Any) -> None:
+        if kind in {"sudo", "secret"}:
+            self.post_approval_response(session_id=session_id)
 
     def subagent_start(self, *, child_session_id: Optional[str] = None, **_: Any) -> None:
         if child_session_id:

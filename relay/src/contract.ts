@@ -27,7 +27,7 @@ const common = {
 };
 const notificationSchema = z.object({
   ...common,
-  kind: z.enum(['reply', 'approval', 'clarify', 'turn_error', 'delivery']),
+  kind: z.enum(['reply', 'approval', 'clarify', 'turn_error', 'delivery', 'input', 'system']),
   collapse_id: id,
   sealed: z.string().min(40).max(12000).regex(/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/).nullable(),
 }).strict();
@@ -42,7 +42,7 @@ export const activitySchema = z.object({ activity_token: tokenSchema }).strict()
 export type PushEvent = z.infer<typeof eventSchema>;
 export type ProgressEvent = z.infer<typeof progressSchema>;
 export type NotificationEvent = z.infer<typeof notificationSchema>;
-export const knownKinds = new Set(['reply', 'approval', 'clarify', 'turn_error', 'delivery', 'progress']);
+export const knownKinds = new Set(['reply', 'approval', 'clarify', 'turn_error', 'delivery', 'input', 'system', 'progress']);
 
 export type Command =
   | { action: 'register'; device: Device }
