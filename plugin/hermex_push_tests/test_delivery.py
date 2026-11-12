@@ -166,8 +166,9 @@ def test_pairing_does_not_enroll_in_real_gateway_home_broadcasts(adapter, monkey
     assert host == ({}, [])
 
 
-def test_interim_gateway_notice_does_not_persist_or_push(adapter, host):
-    result = asyncio.run(adapter.send("default", "Gateway shutting down", metadata={"interim": True}))
+@pytest.mark.parametrize("flag", ["interim", "_interim_send"])
+def test_interim_gateway_notice_does_not_persist_or_push(adapter, host, flag):
+    result = asyncio.run(adapter.send("default", "Gateway shutting down", metadata={flag: True}))
     assert result.success
     assert host == ({}, [])
 
