@@ -48,7 +48,7 @@ it.each([['approval', 300], ['clarify', 3600], ['reply', 3600], ['turn_error', 3
 
 it('uses versioned activity state, stale dates, end events, and the activity topic', () => {
   const push = activityPush({ ...progress, status: 'done' }, device, 'token', '10', 5000);
-  expect(push.topic).toBe('com.uzairansar.hermesmobile.push-type.liveactivity');
+  expect(push.topic).toBe('com.audi.hermex.37hfr5v2jj.push-type.liveactivity');
   expect(push.payload).toEqual({ aps: { timestamp: 5000, event: 'end', 'stale-date': 5900, 'dismissal-date': 5300, 'content-state': { v: 1, status: 'done', tool: 'terminal', tool_calls: 1, started_at: progress.started_at, updated_at: 5000 } } });
   // A failed run leaves the Lock Screen sooner, as the app's own local end does.
   expect(activityPush({ ...progress, status: 'failed' }, device, 'token', '10', 5000).payload).toMatchObject({ aps: { event: 'end', 'dismissal-date': 5030 } });
@@ -57,7 +57,7 @@ it('uses versioned activity state, stale dates, end events, and the activity top
 
 it.each([['complete', 'done', 'Response complete'], ['failed', 'failed', 'Response failed']] as const)('alerts a %s run on a final update, held like its end', (alert, status, key) => {
   const push = endAlertPush({ ...progress, status }, device, 'token', alert, 5000);
-  expect(push).toMatchObject({ topic: 'com.uzairansar.hermesmobile.push-type.liveactivity', type: 'liveactivity', priority: '10', expiration: 5900 });
+  expect(push).toMatchObject({ topic: 'com.audi.hermex.37hfr5v2jj.push-type.liveactivity', type: 'liveactivity', priority: '10', expiration: 5900 });
   expect(push.payload).toEqual({ aps: {
     timestamp: 5000, event: 'update', 'stale-date': 5900,
     alert: { title: 'Hermex', body: { 'loc-key': key }, sound: 'default' },
@@ -69,9 +69,9 @@ it.each(['sandbox', 'production'] as const)('sends to %s with APNs headers and n
   const { sender } = await signingPair();
   // Build the Request for real: workerd throws on init values it does not support, which a bare stub hides.
   const fetch = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => { new Request(input, init); return new Response(null, { status: 200 }); });
-  const push = activityPush(progress, { ...device, environment, bundle_id: 'com.uzairansar.hermesmobile.branch' }, 'token', '5', 5000);
+  const push = activityPush(progress, { ...device, environment, bundle_id: 'com.audi.hermex.37hfr5v2jj' }, 'token', '5', 5000);
   expect(await sender.send(push)).toBe('sent');
-  expect(fetch).toHaveBeenCalledWith(`https://${environment === 'sandbox' ? 'api.sandbox.push.apple.com' : 'api.push.apple.com'}/3/device/token`, expect.objectContaining({ redirect: 'manual', headers: expect.objectContaining({ 'apns-topic': 'com.uzairansar.hermesmobile.branch.push-type.liveactivity', 'apns-priority': '5', 'apns-push-type': 'liveactivity', 'apns-expiration': '0', authorization: expect.stringMatching(/^bearer /) }) }));
+  expect(fetch).toHaveBeenCalledWith(`https://${environment === 'sandbox' ? 'api.sandbox.push.apple.com' : 'api.push.apple.com'}/3/device/token`, expect.objectContaining({ redirect: 'manual', headers: expect.objectContaining({ 'apns-topic': 'com.audi.hermex.37hfr5v2jj.push-type.liveactivity', 'apns-priority': '5', 'apns-push-type': 'liveactivity', 'apns-expiration': '0', authorization: expect.stringMatching(/^bearer /) }) }));
   // A routine update is never stored; an end is held as long as the activity's stale date.
   expect(await sender.send(activityPush({ ...progress, status: 'done' }, device, 'token', '10', 5000))).toBe('sent');
   expect(fetch).toHaveBeenLastCalledWith(expect.any(String), expect.objectContaining({ headers: expect.objectContaining({ 'apns-expiration': '5900' }) }));
