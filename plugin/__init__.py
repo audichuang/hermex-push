@@ -7,6 +7,7 @@ and questions into sealed relay events. The dashboard pairing route lives in
 
 from __future__ import annotations
 
+import logging
 import sys
 from pathlib import Path
 
@@ -26,6 +27,9 @@ from hermex_push.delivery import standalone_send, parse_target
 from hermex_push.cron_delivery_context import install as install_cron_delivery_context
 from hermex_push.hooks import HermexPush  # noqa: E402
 from hermex_push.scopes import serve_every_profile_in_host  # noqa: E402
+
+
+logger = logging.getLogger("hermex_push")
 
 
 def register(ctx) -> None:
@@ -51,7 +55,13 @@ def register(ctx) -> None:
     # The first copy loaded in a process also serves every profile without its own copy.
     undo = serve_every_profile_in_host()
     if callable(getattr(ctx, "on_unload", None)):
-        ctx.on_unload(install_cron_delivery_context())
+        try:
+            release_cron_context = install_cron_delivery_context()
+        except Exception as exc:
+            logger.warning("hermex-push: cron delivery bridge unavailable (%s); using legacy task-name sources",
+                           type(exc).__name__)
+            release_cron_context = lambda: None
+        ctx.on_unload(release_cron_context)
         ctx.on_unload(push.close)
         if undo is not None:
             ctx.on_unload(undo)
