@@ -13,8 +13,9 @@ export const prefsSchema = z.object({
 }).strict();
 export const deviceSchema = z.object({
   device_token: tokenSchema,
-  // Self-hosted for the Hermex Audi build (team 37HFR5V2JJ); upstream ids stay for parity.
-  bundle_id: z.enum(['com.uzairansar.hermesmobile', 'com.uzairansar.hermesmobile.branch', 'com.audi.hermex.37hfr5v2jj']),
+  // Self-hosted for the Hermex Audi build only. Our APNs key (team 37HFR5V2JJ) cannot push to the
+  // upstream app, so accepting its registration would turn every notify into a 503 apns_rejected.
+  bundle_id: z.enum(['com.audi.hermex.37hfr5v2jj']),
   environment: z.enum(['sandbox', 'production']),
   prefs: prefsSchema.prefault({}),
 }).strict();
