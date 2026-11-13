@@ -8,6 +8,7 @@ from typing import Any, Dict, Optional
 from . import PLATFORM_NAME, RELAY_URL_ENV
 from .hooks import relay_url_from_env
 from .delivery import standalone_send, parse_target
+from .transport_scope import is_multiplex_satellite
 
 logger = logging.getLogger("hermex_push")
 
@@ -33,6 +34,9 @@ def env_enablement() -> Optional[dict]:
 
 def make_adapter(config: Any):
     """``adapter_factory``; imports gateway modules lazily so the plugin loads without them."""
+    # Keep satellites unowned even if a host no longer exposes the credential gate.
+    if is_multiplex_satellite():
+        return None
     from gateway.config import Platform
     from gateway.platforms.base import BasePlatformAdapter, SendResult
 

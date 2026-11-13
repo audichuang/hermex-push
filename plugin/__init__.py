@@ -27,6 +27,7 @@ from hermex_push.delivery import standalone_send, parse_target
 from hermex_push.cron_delivery_context import install as install_cron_delivery_context
 from hermex_push.hooks import HermexPush  # noqa: E402
 from hermex_push.scopes import serve_every_profile_in_host  # noqa: E402
+from hermex_push.transport_scope import install as install_transport_scope  # noqa: E402
 
 
 logger = logging.getLogger("hermex_push")
@@ -55,6 +56,14 @@ def register(ctx) -> None:
     # The first copy loaded in a process also serves every profile without its own copy.
     undo = serve_every_profile_in_host()
     if callable(getattr(ctx, "on_unload", None)):
+        try:
+            release_transport_scope = install_transport_scope()
+        except Exception as exc:
+            logger.warning("hermex-push: multiplex transport bridge unavailable (%s); "
+                           "factory scope check applies when Hermes scope helpers are available",
+                           type(exc).__name__)
+            release_transport_scope = lambda: None
+        ctx.on_unload(release_transport_scope)
         try:
             release_cron_context = install_cron_delivery_context()
         except Exception as exc:

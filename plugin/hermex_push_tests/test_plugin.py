@@ -129,7 +129,7 @@ def test_missing_cron_bridge_keeps_push_and_both_resource_cleanups(
         plugin.register(ctx)
     assert ctx.platform["name"] == "hermex"
     assert "cron" in caplog.text.lower() and "bridge" in caplog.text.lower()
-    assert len(ctx.cleanups) == 3 and all(callable(fn) for fn in ctx.cleanups)
+    assert len(ctx.cleanups) == 4 and all(callable(fn) for fn in ctx.cleanups)
     push = ctx.hooks["pre_llm_call"].__self__
     push._sender = sender
     push._keys_loader = lambda: keys
@@ -141,6 +141,69 @@ def test_missing_cron_bridge_keeps_push_and_both_resource_cleanups(
     wrapped = ('Cronjob Response: Fallback task\n(job_id: j)\n-------------\n\n'
                'result\n\nTo stop or manage this job, send me a new message example')
     assert _content(wrapped, None, {}) == ("Fallback task", "result")
+    ctx.unload()
+    assert push._closed and undo_calls == ["undo"]
+
+
+@pytest.mark.parametrize("failure", ["import", "renamed"])
+def test_missing_transport_bridge_keeps_platform_standalone_and_resource_cleanups(
+    failure, monkeypatch, caplog,
+):
+    pytest.importorskip("gateway.platforms.send_targets")
+    plugin = _load(ROOT / "__init__.py", "hermex_push_optional_transport_under_test")
+    undo_calls = []
+    monkeypatch.setattr(plugin, "serve_every_profile_in_host", lambda: lambda: undo_calls.append("undo"))
+
+    def unavailable():
+        if failure == "import":
+            raise ImportError("gateway cannot import")
+        raise AttributeError("credential helper was renamed")
+
+    monkeypatch.setattr(plugin, "install_transport_scope", unavailable)
+    ctx = FakeCtx()
+    with caplog.at_level("WARNING", logger="hermex_push"):
+        plugin.register(ctx)
+    assert ctx.platform["name"] == "hermex"
+    assert ctx.platform["is_connected"] is plugin.is_connected
+    assert ctx.platform["standalone_sender_fn"] is plugin.standalone_send
+    assert ctx.platform["standalone_send"].all_sends is True
+    assert "multiplex transport bridge unavailable" in caplog.text.lower()
+    assert len(ctx.cleanups) == 4 and all(callable(fn) for fn in ctx.cleanups)
+    push = ctx.hooks["pre_llm_call"].__self__
+    ctx.unload()
+    assert push._closed and undo_calls == ["undo"]
+
+
+@pytest.mark.parametrize("loaded", [False, True])
+def test_registration_before_gateway_initialization_preserves_platform_and_cleanup(
+    loaded, monkeypatch, caplog,
+):
+    pytest.importorskip("gateway.platforms.send_targets")
+    pytest.importorskip("cron.scheduler")
+    from hermex_push import transport_scope
+
+    plugin = _load(ROOT / "__init__.py", "hermex_push_early_transport_under_test")
+    module = types.ModuleType("gateway.run")
+    module.__spec__ = types.SimpleNamespace(_initializing=True)
+    if loaded:
+        monkeypatch.setitem(sys.modules, "gateway.run", module)
+    else:
+        monkeypatch.delitem(sys.modules, "gateway.run", raising=False)
+    undo_calls = []
+    monkeypatch.setattr(plugin, "serve_every_profile_in_host", lambda: lambda: undo_calls.append("undo"))
+
+    def no_scope_import():
+        pytest.fail("A deferred bridge must not import scope helpers")
+
+    monkeypatch.setattr(transport_scope, "_scope_helpers", no_scope_import)
+    ctx = FakeCtx()
+    with caplog.at_level("WARNING", logger="hermex_push"):
+        plugin.register(ctx)
+    assert ctx.platform["name"] == "hermex"
+    assert ctx.platform["standalone_sender_fn"] is plugin.standalone_send
+    assert "multiplex transport bridge unavailable" not in caplog.text.lower()
+    assert len(ctx.cleanups) == 4
+    push = ctx.hooks["pre_llm_call"].__self__
     ctx.unload()
     assert push._closed and undo_calls == ["undo"]
 
