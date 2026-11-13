@@ -197,9 +197,9 @@ would rewrite, are refused with 400 before git runs.
 `HERMEX_PUSH_RELAY_URL` must be https; plain http is accepted only to loopback (local capture),
 because the install key travels in the URL path. Redirects from the relay are refused.
 
-## Explicit delivery (0.8.1, hermex#566)
+## Explicit delivery (0.8.2, hermex#566)
 
-Plugin 0.8.1 requires Hermes 0.23.1 or newer. It does not create a gateway home
+Plugin 0.8.2 requires Hermes 0.23.1 or newer. It does not create a gateway home
 channel when push is paired. Use `hermex:default` as an explicit target, or set
 `HERMEX_HOME_CHANNEL=default` for bare `deliver: hermex`. Comma-separated targets
 work, for example `deliver: "discord:123456789,hermex"`.
@@ -209,7 +209,16 @@ installed and enabled**, including satellite Profiles served by one multiplex
 gateway. The process-wide hook helper does not register a cron platform for an
 unconfigured Profile. A primary `profile_routes` entry cannot rescue an unknown
 platform: Hermes checks that the platform is known before considering that route.
-Use `hermes:default` to avoid needing a cron home setting.
+Use `hermex:default` to avoid needing a cron home setting.
+
+Under a multiplex gateway, a satellite's enabled install registers the delivery
+platform and standalone sender **without starting or owning a Hermex adapter**.
+That keeps a credentialless satellite eligible to borrow the primary's Discord
+adapter through an existing exact `profile_routes` entry. A satellite with its
+own Discord bot keeps Hermes' normal own-bot behavior; this plugin does not change
+Discord credentials, routes or the borrowing policy. The launch Profile still
+starts its Hermex adapter, including when the gateway is launched on a named
+Profile. An independent per-Profile gateway also keeps its normal adapter.
 
 `HERMEX_HOME_CHANNEL` is cron routing only: by itself it does not opt into gateway
 shutdown/startup/disk/database broadcasts. If a previous test build saved
@@ -228,7 +237,7 @@ and is not inserted into cron run history. The task name is force-redacted befor
 it reaches the snapshot title or banner subtitle; redaction failure replaces the
 name. The body is a plain-text preview clipped to 400 characters.
 
-### Fork scheduler integration
+### Fork scheduler and multiplex integration
 
 This fork preserves trusted job identity across Hermes 0.23.1's durable queue
 handoff. A reference-counted wrapper around the private
@@ -242,7 +251,26 @@ our wrapper is still installed.
 This is an intentional **private API dependency**, validated against Hermes
 `3b421578588243f920886e6fe79a6faa87ea026e` (0.23.1). Re-run the real gateway smoke
 after a Hermes upgrade; an upstream change to that facade or context propagation
-can break the integration. The fork already uses private host integration for
+can break the integration. The multiplex transport gate also wraps the private
+`gateway.run._platform_has_bot_credential` function. It returns false only for
+Hermex when the current runtime home differs from the gateway's pinned launch
+home under multiplexing; every other call delegates unchanged. Hermes then skips
+the satellite adapter before construction, bot ownership and reconnect claims.
+The platform stays enabled/connected for cron preflight and standalone delivery.
+The final unload restores only this wrapper, with balanced per-Profile leases.
+Registration inspects an already-loaded gateway module; it never imports the
+runner from a plugin worker, avoiding an import-lock startup deadlock. A later
+satellite registration leases the ready runner.
+If that private function cannot be imported or moves, registration warns and
+retains its cleanup callbacks; the adapter factory also refuses satellite Hermex
+construction. On the pinned Hermes version this last-resort path can report
+`needs_attention` for the unbuilt adapter, but does not claim a bot or block
+borrowing. Treat that warning as an upgrade incompatibility to investigate. If Hermes also
+removes the public scope helpers, satellite detection is unavailable and the
+factory retains its original behavior; this setup is not validated on such a
+host. Revalidate before upgrading from the pinned version.
+
+The fork already uses private host integration for
 cross-Profile hooks and dashboard restart, so catalog admission is not claimed.
 If the private scheduler import/facade is unavailable, registration logs a warning
 and uses a no-op bridge release. The platform, normal push hooks and their cleanup
@@ -322,14 +350,23 @@ hermes -p <profile> plugins list
 
 For an unpublished local commit, deploy its `plugin/` payload through the owner's
 existing local deployment process into each Profile's plugin directory, then
-explicitly enable it in each Profile. The Git URL command cannot fetch a commit
+explicitly enable it in each Profile. Enable the **plugin** in satellites too;
+do not disable `platforms.hermex` as a workaround. The fork's transport gate,
+not a separate host configuration flag, suppresses only the satellite adapter.
+The Git URL command cannot fetch a commit
 that has not been pushed. Do not merely enable a Profile that has no plugin files.
 
 Keep the relay URL in the root Hermes `.env` (Profiles inherit the plugin's
 non-secret relay setting). The installation/preview keys remain shared in root
 `plugin-data/hermex-push`; do not copy or regenerate them per Profile. Restart the
 owner-managed gateway/backend after deploying **all** copies so cached plugin
-code is replaced. Use `--deliver hermex:default` for the test job. No `/sethome`
+code and any old satellite Hermex ownership are replaced. Keep the working primary
+Discord configuration and exact `gateway.profile_routes` entries unchanged. Do
+not add Discord bot credentials to credentialless satellites. After restart,
+there must be no `hermex connected (profile: <satellite>)` line; Hermex appears as
+skipped for the satellite while its explicit cron delivery remains available.
+Verify a satellite's Discord-only, Discord+Hermex and Hermex-only job plus a
+primary dual-target job before restoring normal schedules. Use `--deliver hermex:default` for the test job. No `/sethome`
 or gateway home channel is required. This setup does not require changing
 `cron.wrap_response`; the bridge supports false as well as the default true.
 
@@ -344,6 +381,7 @@ credentials, sockets, loopback model/legacy relay, and captured gateway process:
 <hermes-python> plugin/hermex_push_tests/e2e_cron_smoke.py --hermes-source <archive-under-/tmp>
 <hermes-python> plugin/hermex_push_tests/e2e_cron_smoke.py --hermes-source <archive-under-/tmp> --wrap-response default
 <hermes-python> plugin/hermex_push_tests/e2e_cron_smoke.py --hermes-source <archive-under-/tmp> --missing-profile
+<hermes-python> plugin/hermex_push_tests/e2e_multiplex_routing.py --hermes-source <archive-under-/tmp>
 ```
 
 The default mode tests unwrapped output. The second leaves wrapping unset and
@@ -353,6 +391,15 @@ Profile, create and run AI cron jobs through the real CLI/multiplex gateway,
 wait for durable delivery receipts, and verify snapshot title, exact result,
 redacted subtitle and legacy reply identity. Two Profiles produce identical
 result text concurrently, so a mismatched task name is observable. The driver
-never binds owner or cron execution context itself. APNs/physical-phone behavior
-is not simulated, and scheduled clock timing is separate from this CLI-triggered
-scheduler validation.
+never binds owner or cron execution context itself. APNs/physical-phone behavior is not simulated.
+
+The multiplex routing smoke adds a root-only fake Discord network adapter while
+keeping real gateway startup, preflight, exact Profile routing, CLI `cron run`,
+scheduler tick/admission and durable delivery. Its only scheduler substitution
+shortens the polling interval to one second; observation wrappers record tick
+results and adapter ownership without changing decisions. It runs all four
+cases both through the CLI and as due timestamp jobs: satellite Discord-only,
+satellite Discord+Hermex, satellite Hermex-only and primary Discord+Hermex. It
+asserts six Discord sends from the primary, six legacy Hermex replies with the
+correct sealed task subtitles, and no satellite live/owned adapter. This catches
+the regression where a satellite's Hermex adapter disabled primary borrowing.

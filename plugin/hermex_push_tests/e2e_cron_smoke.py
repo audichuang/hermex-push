@@ -113,11 +113,14 @@ class Probe:
             with peer.makefile("rb") as stream:
                 return json.loads(stream.readline())
 
+    def gateway_command(self):
+        return [sys.executable, "-m", "gateway.run"]
+
     @contextmanager
     def gateway(self):
         path = self.root / "gateway.log"
         with path.open("w") as log:
-            proc = subprocess.Popen([sys.executable, "-m", "gateway.run"], cwd=self.source, env=self.env,
+            proc = subprocess.Popen(self.gateway_command(), cwd=self.source, env=self.env,
                                     stdin=subprocess.DEVNULL, stdout=log, stderr=subprocess.STDOUT)
             print(f"Owned gateway PID {proc.pid}; fixture {self.root}", flush=True)
             try:
