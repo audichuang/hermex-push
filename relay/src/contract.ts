@@ -13,7 +13,8 @@ export const prefsSchema = z.object({
 }).strict();
 export const deviceSchema = z.object({
   device_token: tokenSchema,
-  bundle_id: z.enum(['com.uzairansar.hermesmobile', 'com.uzairansar.hermesmobile.branch']),
+  // Self-hosted for the Hermex Audi build (team 37HFR5V2JJ); upstream ids stay for parity.
+  bundle_id: z.enum(['com.uzairansar.hermesmobile', 'com.uzairansar.hermesmobile.branch', 'com.audi.hermex.37hfr5v2jj']),
   environment: z.enum(['sandbox', 'production']),
   prefs: prefsSchema.prefault({}),
 }).strict();
