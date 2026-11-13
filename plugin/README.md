@@ -311,7 +311,7 @@ registered, so a reply compatibility event does not bypass that policy. Delivery
 snapshots have their own session keys; a Live Activity for the original agent
 session does not match them. Previews off still preserves navigation.
 
-## Input and system notifications (0.9.1 fork build, hermex#566)
+## Input and system notifications (0.9.2 fork build, hermex#566)
 
 `input` observes Hermes' `on_human_input_request` / `on_human_input_resolved`
 hooks for sudo and secret requests. It seals a generic request description and
