@@ -104,6 +104,47 @@ def test_profile_registrations_share_one_balanced_cron_bridge():
         second.unload()
 
 
+@pytest.mark.parametrize("failure", ["import", "renamed"])
+def test_missing_cron_bridge_keeps_push_and_both_resource_cleanups(
+    failure, monkeypatch, caplog, sender, keys,
+):
+    pytest.importorskip("gateway.platforms.send_targets")
+    import importlib
+    from hermex_push.delivery import _content
+
+    plugin = _load(ROOT / "__init__.py", "hermex_push_optional_bridge_under_test")
+    undo_calls = []
+    monkeypatch.setattr(plugin, "serve_every_profile_in_host", lambda: lambda: undo_calls.append("undo"))
+    original_import = importlib.import_module
+    def unavailable(name, *args, **kwargs):
+        if name == "cron.scheduler":
+            if failure == "import":
+                raise ImportError("scheduler cannot import")
+            return types.SimpleNamespace()  # the private facade was renamed/moved
+        return original_import(name, *args, **kwargs)
+    monkeypatch.setattr(importlib, "import_module", unavailable)
+
+    ctx = FakeCtx()
+    with caplog.at_level("WARNING", logger="hermex_push"):
+        plugin.register(ctx)
+    assert ctx.platform["name"] == "hermex"
+    assert "cron" in caplog.text.lower() and "bridge" in caplog.text.lower()
+    assert len(ctx.cleanups) == 3 and all(callable(fn) for fn in ctx.cleanups)
+    push = ctx.hooks["pre_llm_call"].__self__
+    push._sender = sender
+    push._keys_loader = lambda: keys
+    push._relay_url = lambda: "http://127.0.0.1"
+    push.pre_llm_call(session_id="chat", platform="desktop")
+    push.post_llm_call(session_id="chat", platform="desktop", assistant_response="Still working")
+    push.on_session_end(session_id="chat", platform="desktop", completed=True, turn_id="turn")
+    assert [event["kind"] for _, event in sender.events if event["kind"] != "progress"] == ["reply"]
+    wrapped = ('Cronjob Response: Fallback task\n(job_id: j)\n-------------\n\n'
+               'result\n\nTo stop or manage this job, send me a new message example')
+    assert _content(wrapped, None, {}) == ("Fallback task", "result")
+    ctx.unload()
+    assert push._closed and undo_calls == ["undo"]
+
+
 def test_pairing_route_returns_keys_only_with_a_relay_url(hermes_home, monkeypatch):
     api = _load(ROOT / "dashboard" / "plugin_api.py", "hermex_push_pairing_under_test")
     app = FastAPI()

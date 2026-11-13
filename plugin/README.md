@@ -197,9 +197,9 @@ would rewrite, are refused with 400 before git runs.
 `HERMEX_PUSH_RELAY_URL` must be https; plain http is accepted only to loopback (local capture),
 because the install key travels in the URL path. Redirects from the relay are refused.
 
-## Explicit delivery (0.8.0, hermex#566)
+## Explicit delivery (0.8.1, hermex#566)
 
-Plugin 0.8.0 requires Hermes 0.23.1 or newer. It does not create a gateway home
+Plugin 0.8.1 requires Hermes 0.23.1 or newer. It does not create a gateway home
 channel when push is paired. Use `hermex:default` as an explicit target, or set
 `HERMEX_HOME_CHANNEL=default` for bare `deliver: hermex`. Comma-separated targets
 work, for example `deliver: "discord:123456789,hermex"`.
@@ -244,6 +244,11 @@ This is an intentional **private API dependency**, validated against Hermes
 after a Hermes upgrade; an upstream change to that facade or context propagation
 can break the integration. The fork already uses private host integration for
 cross-Profile hooks and dashboard restart, so catalog admission is not claimed.
+If the private scheduler import/facade is unavailable, registration logs a warning
+and uses a no-op bridge release. The platform, normal push hooks and their cleanup
+callbacks stay registered. Task naming then falls back to the wrapper, execution
+context or live metadata when available; an unwrapped queued result can lose its
+task name, but the bridge failure no longer disables push.
 The bridge keeps task names even with `cron.wrap_response: false`. Hermes'
 default is `true`; both settings are covered. The name is force-redacted before
 it reaches a snapshot title or sealed subtitle.
