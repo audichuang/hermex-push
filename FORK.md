@@ -12,7 +12,6 @@ with a self-hosted relay. Upstream is `uzairansaruzi/hermex-push`. The rules mat
 - Every PR into `develop` is labelled **`fork-only`** (relay config, bundle ids, account ids) or
   **`upstreamable`**.
 
-
 ## GitHub rules
 
 Because upstream is merged in rather than rebased onto, history is never rewritten, so GitHub enforces the
@@ -25,7 +24,7 @@ model (repository rulesets):
 ## Red lines
 
 - Every change goes on a branch from `fork/develop` and a PR into `develop`, merged with a merge commit.
-  Only an upstream sync and a release move `develop`/`main` otherwise.
+  Nobody pushes `develop` directly (upstream syncs are PRs too); only a release pushes `main`.
 - One topic per PR; never mix fork-only and upstreamable commits.
 - An agent merges, deploys, installs on the host, or opens an upstream PR only when the owner asked for it.
 - Never commit `.p8` keys, relay install keys or tokens. Account, KV, APNs key and team ids are not secrets.
