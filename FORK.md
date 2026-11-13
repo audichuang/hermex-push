@@ -1,48 +1,49 @@
 # audichuang/hermex-push fork
 
-This fork runs on the owner's Hermes host and backs the **Hermex Audi** app (bundle `com.audi.hermex.37hfr5v2jj`)
-with a self-hosted relay. Upstream is `uzairansaruzi/hermex-push`. The rules match
-[audichuang/hermex's FORK.md](https://github.com/audichuang/hermex/blob/develop/FORK.md).
+The plugin and relay that give the **Hermex Audi** app (bundle `com.audi.hermex.37hfr5v2jj`) push on the owner's
+Hermes host, kept as a thin stack of small changes on top of upstream `uzairansaruzi/hermex-push`. The app side
+and the system map are in [audichuang/hermex's FORK.md](https://github.com/audichuang/hermex/blob/develop/FORK.md).
+
+## What runs where
+
+- **Plugin** (`plugin/`): installed on the host as `~/.hermes/plugins/hermex-push`, enabled in the profiles that
+  use Hermex (installing a version is a host change: back up first, restart the gateway, verify on the real host).
+- **Relay** (`relay/`): Cloudflare Worker `hermex-relay-audi`, deployed with `npx cf deploy` from `relay/`
+  (`cloudflare.config.ts`; `cf` still bundles through the repo's wrangler). It accepts only the Hermex Audi
+  bundle id: our APNs key cannot push to upstream's app, and one undeliverable device turns every notify into a
+  503 that the plugin keeps retrying. The APNs key goes in with `--secrets-file` from a private temp file.
+- The host's `HERMEX_PUSH_RELAY_URL` (root `~/.hermes/.env`, which every profile falls back to) picks the relay.
 
 ## Terms
 
-- **`fork`** is `https://github.com/audichuang/hermex-push.git`; **`origin`** is upstream.
-- **`develop`** (default) integrates upstream `main` plus the fork's PRs. **`main`** points at what the host
-  runs: the commit installed into `~/.hermes/plugins/hermex-push` and deployed as `hermex-relay-audi`.
-- Every PR into `develop` is labelled **`fork-only`** (relay config, bundle ids, account ids) or
-  **`upstreamable`**.
-
-## GitHub rules
-
-Because upstream is merged in rather than rebased onto, history is never rewritten, so GitHub enforces the
-model (repository rulesets):
-
-- **`develop: PR only`**: changes only through a PR, merged with a merge commit; no force-push, no deletion.
-- **`main: release pointer`**: no force-push, no deletion. A release moves it by fast-forward to a `develop`
-  commit, so `main` is always an ancestor of `develop`.
+- **`fork`** is `https://github.com/audichuang/hermex-push.git`; **`origin`** is upstream (read only).
+- **`develop`** (default) = upstream `main` tip + the fork's commits as a linear stack.
+- **`main`** = what the host runs. Each deployment is tagged: `plugin/<version>` for an install,
+  `relay/<Cloudflare version id>` for a relay deploy.
+- Every fork commit carries `Fork: upstreamable` or `Fork: fork-only` (relay config, bundle ids, account ids).
 
 ## Red lines
 
-- Every change goes on a branch from `fork/develop` and a PR into `develop`, merged with a merge commit.
-  Nobody pushes `develop` directly (upstream syncs are PRs too); only a release pushes `main`.
-- One topic per PR; never mix fork-only and upstreamable commits.
-- An agent merges, deploys, installs on the host, or opens an upstream PR only when the owner asked for it.
+- Branch from `fork/develop`, PR into `develop` (`-R audichuang/hermex-push`), merge by squash. Only an upstream
+  rebase and a release push `develop`/`main`. One topic per PR; never mix upstreamable and fork-only changes.
+- Keep changes small so rebases stay clean.
+- An agent merges, installs on the host, deploys the relay, rebases, or opens an upstream PR only when asked.
 - Never commit `.p8` keys, relay install keys or tokens. Account, KV, APNs key and team ids are not secrets.
 
-## Merge gate
+## GitHub rules, merge gate
 
-- Relay: `npm run check` in `relay/` (the `relay.yml` workflow runs it on PRs touching `relay/`).
-- Plugin: its pytest suite, plus a run on the real host per the owner's host-testing notes.
+Same rulesets as hermex (`develop`: no deletion, linear history; `main`: no deletion; merge commits off).
+Gate: `npm run check` in `relay/` (`relay.yml` runs it on PRs touching `relay/`) and the plugin's pytest suite.
 
 ## Release
 
-- Plugin: bump `plugin/plugin.yaml`'s version, install that commit on the host, restart the gateway, verify.
-- Relay: `npx cf deploy` from `relay/` (uses `cloudflare.config.ts`; the APNs key goes in with
-  `--secrets-file` from a private temp file, never the repo).
-- Then tag `v<plugin version>-fork.<N>` and move `main` to it in one atomic push (`git push --atomic fork <sha>:refs/heads/main <tag>`).
+Install or deploy from a `develop` commit, verify on the host, then record it:
+`git tag -a plugin/<version> <sha> -m "<where it is installed>"` (or `relay/<version id>`) and
+`git push --atomic --force-with-lease=main:<old> fork "${sha}:refs/heads/main" <tag>` (brace `${sha}` in zsh).
 
-## Upstream sync and upstream PRs
+## Upstream rebase and upstream PRs
 
-Merge upstream `main` into `develop` through a `sync/upstream-<date>` PR. For an upstream PR, cut
-`upstream/<topic>` from `origin/main`, cherry-pick the upstreamable PR's commits, follow upstream's
-contribution rules (English, issue, tests, AI-use disclosure), and get the text approved before sending.
+Same recipe as hermex with `origin/main`: back up `develop` to `backup/develop-<date>`, rebase the fork's
+commits onto `origin/main`, drop ones upstream already took, run the gate, force-push with lease. Upstream PRs
+cherry-pick `Fork: upstreamable` commits onto `upstream/<topic>` from `origin/main`, follow upstream's rules
+(English, issue, tests, AI-use disclosure), and need the owner's approval of the text before sending.
