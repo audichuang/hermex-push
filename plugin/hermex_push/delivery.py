@@ -14,6 +14,7 @@ from typing import Any
 from .hooks import bot_name_for, relay_url_from_env
 from .keys import load_or_create_keys
 from .payload import notify_event, preview
+from .cron_delivery_context import current_delivery
 from .compat import compatibility_event
 from .relay import RelaySender, notify_url
 
@@ -40,6 +41,9 @@ def _content(message: str, execution: Any, metadata: dict) -> tuple[str, str]:
     wrapped = re.fullmatch(
         r'Cronjob Response: (.*?)\n\(job_id: [^\n]*\)\n-------------\n\n(.*)\n\n'
         r'To stop or manage this job, send me a new message .*', message, re.S)
+    trusted = current_delivery()
+    if trusted is not None:
+        return _redact_name(trusted.job_name), wrapped[2] if wrapped else message
     if wrapped:
         return _redact_name(wrapped[1]), wrapped[2]
     if execution is not None:
