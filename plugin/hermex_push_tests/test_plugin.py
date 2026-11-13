@@ -33,6 +33,7 @@ class FakeCtx:
     def __init__(self):
         self.platform = None
         self.hooks = {}
+        self.cleanups = []
 
     def register_platform(self, **kwargs):
         self.platform = kwargs
@@ -41,7 +42,12 @@ class FakeCtx:
         self.hooks[name] = callback
 
     def on_unload(self, callback):
-        self.unload = callback
+        self.cleanups.append(callback)
+
+    def unload(self):
+        for callback in reversed(self.cleanups):
+            callback()
+        self.cleanups.clear()
 
 
 def test_install_identifier_and_manifest_names_agree():
@@ -73,6 +79,29 @@ def test_register_declares_platform_and_every_manifest_hook():
     declared = set(yaml.safe_load((ROOT / "plugin.yaml").read_text())["provides_hooks"])
     assert set(ctx.hooks) == declared
     ctx.unload()  # registered and callable
+
+
+
+def test_profile_registrations_share_one_balanced_cron_bridge():
+    pytest.importorskip("gateway.platforms.send_targets")
+    import cron.scheduler as scheduler
+    plugin = _load(ROOT / "__init__.py", "hermex_push_profiles_under_test")
+    original = scheduler._deliver_result
+    first, second = FakeCtx(), FakeCtx()
+    second.profile_name = "personal-assistant"
+    try:
+        plugin.register(first)
+        wrapper = scheduler._deliver_result
+        assert wrapper is not original
+        plugin.register(second)
+        assert scheduler._deliver_result is wrapper
+        first.unload()
+        assert scheduler._deliver_result is wrapper
+        second.unload()
+        assert scheduler._deliver_result is original
+    finally:
+        first.unload()
+        second.unload()
 
 
 def test_pairing_route_returns_keys_only_with_a_relay_url(hermes_home, monkeypatch):

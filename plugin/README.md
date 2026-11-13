@@ -40,7 +40,7 @@ with `hermes plugins enable hermex-push`, set `HERMEX_PUSH_RELAY_URL`, restart t
 **Profiles.** Sessions run under a Hermes profile scope (`<root>/profiles/<name>`), and each
 profile has its own plugin directory, `plugins.enabled` list and `.env`. hermes-agent discovers
 a profile's plugins once, on first use, so a per-profile install only takes effect after the
-backend restarts. Instead, one install serves every profile in the same process
+backend restarts. For turn hooks, one install serves every profile in the same process
 (`hermex_push/scopes.py`, [hermex#634](https://github.com/uzairansaruzi/hermex/issues/634)):
 the first copy loaded wraps `PluginManager.invoke_hook` and `has_hook` and pushes for any
 profile without its own copy, under that profile's name. That covers the dashboard backend the
@@ -48,7 +48,8 @@ Bot connection uses and hermes-webui, including profiles created later; a profil
 process (`hermes -p <name>` in a terminal) still needs its own install. These are hermes-agent
 internals: on a host without them the plugin logs one warning and only profiles with their own
 copy push. Keys live at the root so every profile pairs as one host, and a profile without
-`HERMEX_PUSH_RELAY_URL` inherits the root `.env` value.
+`HERMEX_PUSH_RELAY_URL` inherits the root `.env` value. Cron delivery still
+requires a normal enabled install in each job-owning Profile, as described below.
 
 ## Validated on the owner's host (2026-09-18, hermes-agent 0.21.3)
 
@@ -201,8 +202,14 @@ because the install key travels in the URL path. Redirects from the relay are re
 Plugin 0.8.0 requires Hermes 0.23.1 or newer. It does not create a gateway home
 channel when push is paired. Use `hermex:default` as an explicit target, or set
 `HERMEX_HOME_CHANNEL=default` for bare `deliver: hermex`. Comma-separated targets
-work, for example `deliver: "discord:123456789,hermex"`. A separate-process
-Profile needs the plugin installed and enabled in that Profile too.
+work, for example `deliver: "discord:123456789,hermex"`.
+
+**Every Profile that owns a Hermex cron job must have the same plugin revision
+installed and enabled**, including satellite Profiles served by one multiplex
+gateway. The process-wide hook helper does not register a cron platform for an
+unconfigured Profile. A primary `profile_routes` entry cannot rescue an unknown
+platform: Hermes checks that the platform is known before considering that route.
+Use `hermes:default` to avoid needing a cron home setting.
 
 `HERMEX_HOME_CHANNEL` is cron routing only: by itself it does not opt into gateway
 shutdown/startup/disk/database broadcasts. If a previous test build saved
@@ -220,6 +227,32 @@ An explicit send saves complete delivered text in its Profile's SessionDB as a
 and is not inserted into cron run history. The task name is force-redacted before
 it reaches the snapshot title or banner subtitle; redaction failure replaces the
 name. The body is a plain-text preview clipped to 400 characters.
+
+### Fork scheduler integration
+
+This fork preserves trusted job identity across Hermes 0.23.1's durable queue
+handoff. A reference-counted wrapper around the private
+`cron.scheduler._deliver_result` facade copies the queued job's ID, name and
+execution ID into a plugin-owned ContextVar, and resets it after the call. The
+standalone sender receives that context through the normal async/thread copies.
+It does not guess from the most recent job, inspect the call stack, or patch the
+standalone sender contract. The final plugin unload restores the facade only if
+our wrapper is still installed.
+
+This is an intentional **private API dependency**, validated against Hermes
+`3b421578588243f920886e6fe79a6faa87ea026e` (0.23.1). Re-run the real gateway smoke
+after a Hermes upgrade; an upstream change to that facade or context propagation
+can break the integration. The fork already uses private host integration for
+cross-Profile hooks and dashboard restart, so catalog admission is not claimed.
+The bridge keeps task names even with `cron.wrap_response: false`. Hermes'
+default is `true`; both settings are covered. The name is force-redacted before
+it reaches a snapshot title or sealed subtitle.
+
+App Store 2.1 (`v2.1.0`, `PushPreview.rewrite`) applies the sealed subtitle and
+body independently of kind. The reply path only replaces the title with the bot
+name. A legacy relay can therefore display the task in the subtitle while the
+title remains the bot name; the seal is unchanged by compatibility delivery.
+
 
 Cron's live adapter call receives text before Hermes sends attachments separately.
 It therefore defers before any I/O to the scheduler's standalone sender, which
@@ -268,14 +301,53 @@ Earlier versions cannot update a subdirectory install, so reinstall there with
 Either way the pairing keys survive, and the change takes effect once the Hermes processes that
 run agents restart.
 
-Manual Hermes 0.23.1 integration smoke (not collected by pytest or CI; disposable home only):
+## Owner installation and Profile setup (maintained fork)
+
+Use `https://github.com/audichuang/hermex-push.git/plugin` and one reviewed full
+commit SHA for **default and every cron-owning Profile**. Once that commit is
+available in the fork, the owner's commands are:
 
 ```sh
-HERMES_HOME="$(mktemp -d /tmp/hermex-push-smoke.XXXXXX)" \
-  PYTHONPATH=<hermes-agent-source> <hermes-python> plugin/hermex_push_tests/e2e_cron_smoke.py
+PIN=<reviewed-40-character-commit-sha>
+hermes plugins install https://github.com/audichuang/hermex-push.git/plugin --ref "$PIN" --force --yes-deps --enable
+hermes -p <profile> plugins install https://github.com/audichuang/hermex-push.git/plugin --ref "$PIN" --force --yes-deps --enable
+hermes plugins list
+hermes -p <profile> plugins list
 ```
 
-The model and relay are loopback HTTP fixtures; only Discord's network leaf is
-captured. The actual scheduler, agent, platform registry, live scheduler handoff and
-SessionDB run. The harness binds the owner-store context directly, so it does not
-claim gateway RPC admission, the daemon ticker, APNs or a physical-phone test.
+For an unpublished local commit, deploy its `plugin/` payload through the owner's
+existing local deployment process into each Profile's plugin directory, then
+explicitly enable it in each Profile. The Git URL command cannot fetch a commit
+that has not been pushed. Do not merely enable a Profile that has no plugin files.
+
+Keep the relay URL in the root Hermes `.env` (Profiles inherit the plugin's
+non-secret relay setting). The installation/preview keys remain shared in root
+`plugin-data/hermex-push`; do not copy or regenerate them per Profile. Restart the
+owner-managed gateway/backend after deploying **all** copies so cached plugin
+code is replaced. Use `--deliver hermex:default` for the test job. No `/sethome`
+or gateway home channel is required. This setup does not require changing
+`cron.wrap_response`; the bridge supports false as well as the default true.
+
+## Manual real-gateway smoke
+
+This smoke is not collected by pytest/CI. It requires a **source archive** of
+the tested Hermes commit under `/tmp` and a Python with that Hermes runtime's
+dependencies. It creates its own disposable Hermes homes, child OS home,
+credentials, sockets, loopback model/legacy relay, and captured gateway process:
+
+```sh
+<hermes-python> plugin/hermex_push_tests/e2e_cron_smoke.py --hermes-source <archive-under-/tmp>
+<hermes-python> plugin/hermex_push_tests/e2e_cron_smoke.py --hermes-source <archive-under-/tmp> --wrap-response default
+<hermes-python> plugin/hermex_push_tests/e2e_cron_smoke.py --hermes-source <archive-under-/tmp> --missing-profile
+```
+
+The default mode tests unwrapped output. The second leaves wrapping unset and
+checks the actual default; the third confirms that a Profile without the plugin
+is rejected by the real preflight. Positive cases enable the plugin in each
+Profile, create and run AI cron jobs through the real CLI/multiplex gateway,
+wait for durable delivery receipts, and verify snapshot title, exact result,
+redacted subtitle and legacy reply identity. Two Profiles produce identical
+result text concurrently, so a mismatched task name is observable. The driver
+never binds owner or cron execution context itself. APNs/physical-phone behavior
+is not simulated, and scheduled clock timing is separate from this CLI-triggered
+scheduler validation.
