@@ -12,6 +12,16 @@ with a self-hosted relay. Upstream is `uzairansaruzi/hermex-push`. The rules mat
 - Every PR into `develop` is labelled **`fork-only`** (relay config, bundle ids, account ids) or
   **`upstreamable`**.
 
+
+## GitHub rules
+
+Because upstream is merged in rather than rebased onto, history is never rewritten, so GitHub enforces the
+model (repository rulesets):
+
+- **`develop: PR only`**: changes only through a PR, merged with a merge commit; no force-push, no deletion.
+- **`main: release pointer`**: no force-push, no deletion. A release moves it by fast-forward to a `develop`
+  commit, so `main` is always an ancestor of `develop`.
+
 ## Red lines
 
 - Every change goes on a branch from `fork/develop` and a PR into `develop`, merged with a merge commit.
@@ -30,7 +40,7 @@ with a self-hosted relay. Upstream is `uzairansaruzi/hermex-push`. The rules mat
 - Plugin: bump `plugin/plugin.yaml`'s version, install that commit on the host, restart the gateway, verify.
 - Relay: `npx cf deploy` from `relay/` (uses `cloudflare.config.ts`; the APNs key goes in with
   `--secrets-file` from a private temp file, never the repo).
-- Then tag `v<plugin version>-fork.<N>` and move `main` to it in one atomic push.
+- Then tag `v<plugin version>-fork.<N>` and move `main` to it in one atomic push (`git push --atomic fork <sha>:refs/heads/main <tag>`).
 
 ## Upstream sync and upstream PRs
 
