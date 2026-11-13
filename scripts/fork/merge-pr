@@ -1,0 +1,26 @@
+#!/bin/zsh
+# Squash-merges a fork PR into develop as exactly one commit with one Fork: trailer (FORK.md § Red lines).
+#
+#   scripts/fork/merge-pr <pr> <upstreamable|fork-only> "<English conventional subject>" ["<why, body text>"]
+#
+# The subject is English so an upstreamable commit can be cherry-picked upstream as is; the PR title may be
+# in any language. The repo's default squash message is blank, so the trailer only exists if it goes in here.
+set -euo pipefail
+(( $# >= 3 )) || { print -u2 "usage: $0 <pr> <upstreamable|fork-only> <subject> [body]"; exit 2 }
+pr=$1 scope=$2 subject=$3 body=${4:-}
+[[ $scope == upstreamable || $scope == fork-only ]] || { print -u2 "scope must be upstreamable or fork-only"; exit 2 }
+[[ $body != *"Fork:"* && $subject != *"Fork:"* ]] || { print -u2 "Leave Fork: out of subject/body; this script adds the only one."; exit 2 }
+
+repo=$(git remote get-url fork | sed -E 's#(git@github.com:|https://github.com/)##; s#\.git$##')
+message=${body:+$body$'\n\n'}"Fork: $scope"
+gh pr merge "$pr" -R "$repo" --squash --subject "$subject" --body "$message"
+
+git fetch -q fork
+sha=$(gh pr view "$pr" -R "$repo" --json mergeCommit --jq .mergeCommit.oid)
+count=$(git log -1 --format='%(trailers:key=Fork,valueonly)' "$sha" | grep -c .)
+value=$(git log -1 --format='%(trailers:key=Fork,valueonly)' "$sha" | head -1)
+if [[ $count != 1 || $value != $scope ]]; then
+  print -u2 "Merged as ${sha[1,8]} but its Fork: trailer is wrong (count $count, value '$value'). Fix with a follow-up PR."
+  exit 1
+fi
+print "Merged #$pr as ${sha[1,8]} ($subject) with Fork: $scope."

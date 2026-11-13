@@ -18,32 +18,39 @@ and the system map are in [audichuang/hermex's FORK.md](https://github.com/audic
 
 - **`fork`** is `https://github.com/audichuang/hermex-push.git`; **`origin`** is upstream (read only).
 - **`develop`** (default) = upstream `main` tip + the fork's commits as a linear stack.
-- **`main`** = what the host runs. Each deployment is tagged: `plugin/<version>` for an install,
-  `relay/<Cloudflare version id>` for a relay deploy.
+- **`main`** = the plugin commit installed on the host, tagged `plugin/<version>`. The relay is tracked only by
+  `relay/<Cloudflare version id>` tags (it deploys separately and its commit need not match the plugin's).
 - Every fork commit carries `Fork: upstreamable` or `Fork: fork-only` (relay config, bundle ids, account ids).
 
 ## Red lines
 
-- Branch from `fork/develop`, PR into `develop` (`-R audichuang/hermex-push`), merge by squash. Only an upstream
-  rebase and a release push `develop`/`main`. One topic per PR; never mix upstreamable and fork-only changes.
+- Branch from `fork/develop`, PR into `develop` (`-R audichuang/hermex-push`), merge with
+  `scripts/fork/merge-pr <pr> <upstreamable|fork-only> "<English subject>"` (one squash commit, one `Fork:`
+  trailer). Only an upstream rebase and a release push `develop`/`main`. One topic per PR.
+- Never install the plugin or deploy the relay from a `develop` that lacks what is live: compare with the
+  `plugin/*` and `relay/*` tags first (an older plugin version or a relay without the Audi bundle id is a
+  silent downgrade).
 - Keep changes small so rebases stay clean.
 - An agent merges, installs on the host, deploys the relay, rebases, or opens an upstream PR only when asked.
 - Never commit `.p8` keys, relay install keys or tokens. Account, KV, APNs key and team ids are not secrets.
 
 ## GitHub rules, merge gate
 
-Same rulesets as hermex (`develop`: no deletion, linear history; `main`: no deletion; merge commits off).
+Same rulesets as hermex (`develop`: no deletion, linear history; `main`: no deletion; squash merges only,
+blank default message).
 Gate: `npm run check` in `relay/` (`relay.yml` runs it on PRs touching `relay/`) and the plugin's pytest suite.
 
 ## Release
 
 Install or deploy from a `develop` commit, verify on the host, then record it:
 `git tag -a plugin/<version> <sha> -m "<where it is installed>"` (or `relay/<version id>`) and
-`git push --atomic --force-with-lease=main:<old> fork "${sha}:refs/heads/main" <tag>` (brace `${sha}` in zsh).
+move `main` with `git push --atomic --force-with-lease=main:<old> fork "${sha}:refs/heads/main" <tag>` for a plugin
+install, or push only the tag for a relay deploy (brace `${sha}` in zsh).
 
 ## Upstream rebase and upstream PRs
 
-Same recipe as hermex with `origin/main`: back up `develop` to `backup/develop-<date>`, rebase the fork's
-commits onto `origin/main`, drop ones upstream already took, run the gate, force-push with lease. Upstream PRs
+Same recipe as hermex's FORK.md with `origin/main`: `git fetch --multiple origin fork`, take one
+`base=$(git rev-parse fork/develop)` for the backup branch, the rebase and the lease, rebase onto `origin/main`,
+drop commits upstream already took, run the gate, `git push --force-with-lease=develop:${base} fork HEAD:refs/heads/develop`. Upstream PRs
 cherry-pick `Fork: upstreamable` commits onto `upstream/<topic>` from `origin/main`, follow upstream's rules
 (English, issue, tests, AI-use disclosure), and need the owner's approval of the text before sending.
