@@ -39,6 +39,13 @@ and the system map are in [audichuang/hermex's FORK.md](https://github.com/audic
 Same rulesets as hermex (`develop`: no deletion, linear history; `main`: no deletion; squash merges only,
 blank default message).
 Gate: `npm run check` in `relay/` (`relay.yml` runs it on PRs touching `relay/`) and the plugin's pytest suite.
+The plugin imports Hermes itself (`agent.redact`, …), so run it from `plugin/` against the installed Hermes;
+without it, tests fail on missing modules or `[REDACTED - redaction failed]`:
+
+```sh
+PYTHONPATH=$HOME/.hermes/hermes-agent uv run --no-project --with pytest --with fastapi --with httpx \
+  --with pyyaml --with cryptography --with ruamel.yaml --with python-multipart python -m pytest -q
+```
 
 ## Release
 
