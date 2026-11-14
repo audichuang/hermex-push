@@ -114,3 +114,4 @@ For an APNs signing-key rotation, create the replacement in Apple Developer, ret
 An install-key compromise is separate: generate a new pairing on the host, revoke devices under the old capability, and re-pair every phone. Preview-key rotation must be coordinated with the plugin and phone; the relay never receives or rotates that key. Removing a preview key without re-pairing prevents decryption.
 
 
+
