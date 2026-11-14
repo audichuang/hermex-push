@@ -38,10 +38,8 @@ and the system map are in [audichuang/hermex's FORK.md](https://github.com/audic
 
 Same rulesets as hermex (`develop`: no deletion, linear history; `main`: no deletion; squash merges only,
 blank default message).
-Gate, run locally: `npm run check` in `relay/` and the plugin's pytest suite. `relay.yml` would run the relay check
-on PRs touching `relay/`, but no workflow has ever run on this fork (as of 2026-11-14, even after `gh workflow
-enable`), most likely because GitHub keeps a fork's workflows off until the owner enables them on the repo's
-Actions tab (not confirmed: needs the owner's signed-in view of that tab).
+Gate: `relay.yml` runs `npm run check` on PRs touching `relay/` (GitHub keeps a fork's workflows off until
+the owner enables them on the Actions tab; done 2026-11-14). Run the plugin's pytest suite locally; no workflow covers it.
 The plugin imports Hermes itself (`agent.redact`, …), so run it from `plugin/` against the installed Hermes;
 without it, tests fail on missing modules or `[REDACTED - redaction failed]`:
 
