@@ -64,3 +64,12 @@ describe('end alert', () => {
     expect(endAlert({ ...progress, status: 'done' }, { ...device, prefs: { ...device.prefs, ...present } }, 100)).toBe('complete');
   });
 });
+
+
+it.each(['input', 'system'] as const)('keeps %s visible with replies off and an active session', (kind) => {
+  const muted = { ...device, prefs: { ...device.prefs, replies: false, previews: false } };
+  expect(deliveryPolicy({ ...notification, kind }, muted, true, 0)).toMatchObject({
+    type: 'banner', interruption: kind === 'input' ? 'time-sensitive' : 'active', preview: false,
+  });
+  expect(deliveryPolicy({ ...notification, kind, is_subagent: true }, muted, true, 0)).toEqual({ type: 'none' });
+});

@@ -140,6 +140,13 @@ class RelaySender:
             else:
                 reason = f"HTTP {status}"
             if 200 <= status < 300:
+                # Older relays ignore unknown kinds before any fan-out. Change only the
+                # kind after that definite response, never after an uncertain send.
+                if status == 200 and result == "ignored":
+                    from .compat import compatibility_event
+                    legacy = compatibility_event(event)
+                    if legacy is not None:
+                        return self.deliver(url, legacy, on_result)
                 if on_result is not None:
                     on_result(result)
                 return True

@@ -7,6 +7,7 @@ and questions into sealed relay events. The dashboard pairing route lives in
 
 from __future__ import annotations
 
+import logging
 import sys
 from pathlib import Path
 
@@ -22,17 +23,27 @@ from hermex_push import PLATFORM_NAME, RELAY_URL_ENV  # noqa: E402
 from hermex_push.adapter import (  # noqa: E402
     PLATFORM_HINT, check_requirements, env_enablement, is_connected, make_adapter,
 )
+from hermex_push.delivery import standalone_send, parse_target
+from hermex_push.cron_delivery_context import install as install_cron_delivery_context
 from hermex_push.hooks import HermexPush  # noqa: E402
 from hermex_push.scopes import serve_every_profile_in_host  # noqa: E402
+from hermex_push.transport_scope import install as install_transport_scope  # noqa: E402
+
+
+logger = logging.getLogger("hermex_push")
 
 
 def register(ctx) -> None:
     """Plugin entry point called by the Hermes plugin system, once per profile scope."""
+    from gateway.platforms.send_targets import StandaloneSendPolicy
+
     ctx.register_platform(
         name=PLATFORM_NAME, label="Hermex", adapter_factory=make_adapter, check_fn=check_requirements,
         is_connected=is_connected, required_env=[RELAY_URL_ENV],
         install_hint="pip install cryptography   # already a Hermes dependency",
-        env_enablement_fn=env_enablement, emoji="📱", pii_safe=True, platform_hint=PLATFORM_HINT,
+        env_enablement_fn=env_enablement, cron_deliver_env_var="HERMEX_HOME_CHANNEL",
+        standalone_sender_fn=standalone_send,
+        standalone_send=StandaloneSendPolicy(all_sends=True, media=True), parse_target_ref_fn=parse_target, emoji="📱", pii_safe=True, platform_hint=PLATFORM_HINT,
     )
     profile = ""
     try:
@@ -45,6 +56,21 @@ def register(ctx) -> None:
     # The first copy loaded in a process also serves every profile without its own copy.
     undo = serve_every_profile_in_host()
     if callable(getattr(ctx, "on_unload", None)):
+        try:
+            release_transport_scope = install_transport_scope()
+        except Exception as exc:
+            logger.warning("hermex-push: multiplex transport bridge unavailable (%s); "
+                           "factory scope check applies when Hermes scope helpers are available",
+                           type(exc).__name__)
+            release_transport_scope = lambda: None
+        ctx.on_unload(release_transport_scope)
+        try:
+            release_cron_context = install_cron_delivery_context()
+        except Exception as exc:
+            logger.warning("hermex-push: cron delivery bridge unavailable (%s); using legacy task-name sources",
+                           type(exc).__name__)
+            release_cron_context = lambda: None
+        ctx.on_unload(release_cron_context)
         ctx.on_unload(push.close)
         if undo is not None:
             ctx.on_unload(undo)
