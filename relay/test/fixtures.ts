@@ -2,7 +2,7 @@ import { deviceSchema, type NotificationEvent, type ProgressEvent } from '../src
 
 export const installKey = '1'.repeat(64);
 export const device = deviceSchema.parse({
-  device_token: 'a'.repeat(64), bundle_id: 'com.uzairansar.hermesmobile', environment: 'sandbox',
+  device_token: 'a'.repeat(64), bundle_id: 'com.audi.hermex.37hfr5v2jj', environment: 'sandbox',
 });
 export const notification: NotificationEvent = {
   v: 1, kind: 'reply', event_id: 'b'.repeat(32), thread_id: 'c'.repeat(32), collapse_id: 'd'.repeat(32),
