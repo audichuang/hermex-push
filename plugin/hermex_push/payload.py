@@ -60,8 +60,9 @@ def _as_text(value: Any) -> str:
 
 
 def fence_recalled_memory(value: Any) -> str:
-    """The reply as the host delivers it: recalled-memory spans dropped. Hermes v0.23.1 has
-    `agent.memory_context.fence_recalled_context`; a host without it is used as is."""
+    """The reply as the host delivers it: recalled-memory spans dropped. Hermes v0.23.2 is the first
+    with `agent.memory_context.fence_recalled_context`; an older host falls back to the raw text
+    (the host itself does not fence there)."""
     text = _as_text(value)
     try:
         from agent.memory_context import fence_recalled_context

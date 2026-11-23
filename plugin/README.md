@@ -85,6 +85,14 @@ A `null` seal means encryption failed on the host; the phone shows a generic
 banner. `event_id` is stable per turn or request for relay dedupe; `thread_id` and
 `collapse_id` are stable per session. All three are HMAC-SHA256 keyed from the install key.
 
+Recalled-memory spans (`<memory-context>…</memory-context>`) are removed from every reply
+with the host's `agent.memory_context.fence_recalled_context` before the banner body and the
+room pass check read it, so private memory never reaches a banner and a reply that is only a
+memory block plus `(pass)` is still a pass. A host without that function (before Hermes
+v0.23.2) is used as is. The plugin fences like live delivery (`agent/memory_context.py`), so
+it inherits the host's own fencing gaps, and a room member that replies only with a memory
+block gets the host's "no response" notice posted with no push.
+
 Progress (Live Activity state, routine updates at most one per session every five seconds,
 status changes always through). When the relay answers `no_activity` (no phone shows a Live
 Activity for the session), routine updates slow to one a minute after the turn's first 30
@@ -311,7 +319,7 @@ registered, so a reply compatibility event does not bypass that policy. Delivery
 snapshots have their own session keys; a Live Activity for the original agent
 session does not match them. Previews off still preserves navigation.
 
-## Input and system notifications (0.9.5 fork build, hermex#566)
+## Input and system notifications (0.9.6 fork build, hermex#566)
 
 `input` observes Hermes' `on_human_input_request` / `on_human_input_resolved`
 hooks for sudo and secret requests. It seals a generic request description and
@@ -336,7 +344,7 @@ reply for input would silently lose attention. `input` falls back to `clarify`
 to keep that attention banner. System compatibility follows the old Replies
 preference and Live Activity policy; snapshot session IDs remain separate.
 
-## Room turns (0.9.6)
+## Room turns (0.9.5)
 
 A `bot_room` member's turn is pushed only when it becomes a room message. The room
 hides a pass (`(pass)`, `pass.`, blank) and the lead's routing answer
@@ -344,12 +352,6 @@ hides a pass (`(pass)`, `pass.`, blank) and the lead's routing answer
 has an empty subtitle: the prompt is the room's instructions, and the banner title
 already names the bot. A failed turn still sends `turn_error`; other platforms are
 unchanged.
-
-Recalled-memory spans (`<memory-context>…</memory-context>`) are removed from every
-reply with the host's `agent.memory_context.fence_recalled_context` before the banner
-body and the pass check read it, so private memory never reaches a banner and a reply
-that is only a memory block plus `(pass)` is still a pass. A host without that function
-is used as is.
 
 Detection reads two strings from the host: the pass rule mirrors
 `gateway/hosted_room_discussion.py` (`is_pass_text`), and the lead's routing prompt
