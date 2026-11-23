@@ -24,6 +24,7 @@ from .keys import Keys, hermes_root, load_or_create_keys
 from .payload import notify_event, preview, progress_event
 from .privacy import keyed_id
 from .progress import ProgressCoalescer, ProgressSnapshot
+from .rooms import is_lead_dispatch, is_pass
 from .relay import RelaySender, ResultFn, allowed_relay_url, notify_url
 from .sources import coarse_source, should_notify
 
@@ -327,6 +328,10 @@ class HermexPush:
                              body=turn_exit_reason or "The agent stopped without finishing.")
             elif completed and captured is not None:
                 user_message, reply = captured
+                if self._session(session_id)[0].strip().lower() == "bot_room":
+                    if is_pass(reply) or is_lead_dispatch(user_message):
+                        return
+                    user_message = ""  # the prompt is the room's instructions, not something the owner typed
                 self._notify("reply", session_id, ref, subtitle=user_message, body=reply)
         except Exception:
             logger.warning("hermex-push: on_session_end failed; a push was dropped", exc_info=True)

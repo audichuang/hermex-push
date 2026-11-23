@@ -311,7 +311,7 @@ registered, so a reply compatibility event does not bypass that policy. Delivery
 snapshots have their own session keys; a Live Activity for the original agent
 session does not match them. Previews off still preserves navigation.
 
-## Input and system notifications (0.9.4 fork build, hermex#566)
+## Input and system notifications (0.9.5 fork build, hermex#566)
 
 `input` observes Hermes' `on_human_input_request` / `on_human_input_resolved`
 hooks for sudo and secret requests. It seals a generic request description and
@@ -335,6 +335,24 @@ suppresses `reply` for a session with a registered Live Activity, so using a
 reply for input would silently lose attention. `input` falls back to `clarify`
 to keep that attention banner. System compatibility follows the old Replies
 preference and Live Activity policy; snapshot session IDs remain separate.
+
+## Room turns (0.9.5)
+
+A `bot_room` member's turn is pushed only when it becomes a room message. The room
+hides a pass (`(pass)`, `pass.`, blank) and the lead's routing answer
+(`{"assign": [...]}`), so the phone sends no banner for them either. A room reply
+has an empty subtitle: the prompt is the room's instructions, and the banner title
+already names the bot. A failed turn still sends `turn_error`; other platforms are
+unchanged.
+
+Detection reads two strings from the host: the pass rule mirrors
+`gateway/hosted_room_discussion.py` (`is_pass_text`), and the lead's routing prompt
+is recognised by `[Discussion: "` at the start and `the lead of this room.` on the
+first line (`gateway/hosted_room_lead.py`). If the host rewords that line, the
+routing banner returns. A room name containing a quote is harmless (the name is not
+parsed); one containing a line break, or the phrase `the lead of this room.`, would
+defeat or wrongly trigger the lead check. The hooks get no room id, so a member turn
+the room later cancels still pushes.
 
 ## Development
 
