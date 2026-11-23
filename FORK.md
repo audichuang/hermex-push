@@ -55,6 +55,13 @@ Install or deploy from a `develop` commit, verify on the host, then record it:
 move `main` with `git push --atomic --force-with-lease=main:<old> fork "${sha}:refs/heads/main" <tag>` for a plugin
 install, or push only the tag for a relay deploy (brace `${sha}` in zsh).
 
+A plugin install replaces every copy the host loads: `~/.hermes/plugins/hermex-push` and each Profile's own
+`~/.hermes/profiles/*/plugins/hermex-push` (a Profile with its own copy keeps running that one). Back the copies up,
+copy `plugin/` from the `develop` commit into each, then `hermes gateway restart`: the dashboard runs under the
+same launchd service, so one restart reloads both. Without `--yes` it refuses while a chat or cron run is live;
+wait and retry rather than interrupt. Verify with the dashboard's `GET /api/plugins/hermex-push/capabilities`,
+whose `plugin_version` is the loaded version.
+
 ## Upstream rebase and upstream PRs
 
 Same recipe as hermex's FORK.md with `origin/main`: `git fetch --multiple origin fork`, take one
