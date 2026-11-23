@@ -122,3 +122,32 @@ def test_a_branch_name_the_host_would_rewrite_is_refused(client, host, repos):
         response = client.post(f"{PREFIX}/git/branch", json={"path": str(local), "name": name})
         assert response.status_code == 400, name
     assert git(local, "branch", "--show-current") == "main"
+
+
+@pytest.mark.parametrize("helpers", [("_git",), ("_git", "_git_write")])
+def test_git_routes_pick_the_host_runner_that_exists(client, monkeypatch, tmp_path, helpers):
+    """A 0.23.1 host has only ``_git``; later ones also have ``_git_write``. Neither may 500."""
+    import types
+
+    calls = []
+
+    def runner(name):
+        def run(cwd, args, timeout=None):
+            calls.append(name)
+            return 0, "ok", ""
+        return run
+
+    web_git = types.ModuleType("hermes_cli.web_git")
+    for name in helpers:
+        setattr(web_git, name, runner(name))
+    files = types.ModuleType("hermes_cli.web_server_files")
+    files._fs_path = lambda path: Path(path)
+    pkg = types.ModuleType("hermes_cli")
+    pkg.web_git, pkg.web_server_files = web_git, files
+    monkeypatch.setitem(sys.modules, "hermes_cli", pkg)
+    monkeypatch.setitem(sys.modules, "hermes_cli.web_git", web_git)
+    monkeypatch.setitem(sys.modules, "hermes_cli.web_server_files", files)
+
+    response = client.post(f"{PREFIX}/git/fetch", json={"path": str(tmp_path)})
+    assert response.status_code == 200 and response.json()["ok"] is True
+    assert calls == [helpers[-1]]

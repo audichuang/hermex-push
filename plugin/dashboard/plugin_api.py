@@ -22,7 +22,7 @@ update Hermex installed is loaded without a trip to the host.
 lack: ``fetch --prune``, a fast-forward-only ``pull``, and ``switch -c`` (create and switch).
 They answer as the host's git routes do: 200 ``{"ok": true, "message": <git's output>}``, or 400
 ``{"detail": ...}``. Each runs in-process through the host's own hardening: the path through
-``hermes_cli.web_server_files._fs_path`` and git through ``hermes_cli.web_git._git_write`` (hardened
+``hermes_cli.web_server_files._fs_path`` and git through ``hermes_cli.web_git._git_write`` (``_git`` on hosts without it; hardened
 argv, non-interactive env). An option-like ``remote`` or ``start``, and a ``name`` the host's
 branch sanitizer would rewrite, are refused before git runs.
 
@@ -199,11 +199,13 @@ def _operand(value: str | None) -> list[str]:
 async def _run_git(path: str, args: list[str]) -> JSONResponse:
     """Runs ``git args`` in ``path`` off the event loop, through the host's path and git hardening.
     A non-zero exit is a 400 carrying git's stderr, as the host's ``_git_op`` answers."""
-    from hermes_cli.web_git import _git_write
+    from hermes_cli import web_git
     from hermes_cli.web_server_files import _fs_path
 
+    # Newer hosts make ``_git`` read-only and add ``_git_write`` for mutating calls; 0.23.1 has only ``_git``.
+    run = getattr(web_git, "_git_write", None) or web_git._git
     cwd = str(_fs_path(path))
-    code, out, err = await asyncio.to_thread(_git_write, cwd, args, timeout=GIT_REMOTE_TIMEOUT_S)
+    code, out, err = await asyncio.to_thread(run, cwd, args, timeout=GIT_REMOTE_TIMEOUT_S)
     if code != 0:
         raise HTTPException(status_code=400, detail=err.strip() or f"git {args[0]} failed")
     return JSONResponse({"ok": True, "message": (out or err).strip()}, headers={"Cache-Control": "no-store"})
