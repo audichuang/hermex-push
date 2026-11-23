@@ -416,3 +416,75 @@ def test_input_observer_never_copies_prompts_or_answers_and_resumes(push, sender
     assert [e["status"] for _, e in sender.events if e["kind"] == "progress"] == ["waiting", "running"]
     push.on_human_input_request(kind="clarify", session_id="local-input", platform="gui")
     assert len(notifications(sender)) == 1
+
+
+LEAD = '[Discussion: "總機"] You are @hermes, the lead of this room.\n\nMembers:\n- @hermes (you)'
+MEMBER = '[Discussion: "總機"] You are @hermes, one participant with @coach and the user.\n\nNew messages'
+
+
+def room_turn(push, user_message, reply, session_id="room-1", turn_id="t1", platform="bot_room", **end):
+    push.pre_llm_call(session_id=session_id, platform=platform, user_message=user_message)
+    push.post_llm_call(session_id=session_id, user_message=user_message, assistant_response=reply, platform=platform)
+    push.on_session_end(session_id=session_id, completed=True, interrupted=False, failed=False,
+                        turn_id=turn_id, platform=platform, **end)
+
+
+def unsealed(event, keys):
+    return unseal(event["sealed"], preview_key=keys.preview_key, install_key=keys.install_key)
+
+
+def test_a_room_pass_sends_no_reply(push, sender):
+    for i, reply in enumerate(["(pass)", "pass.", "  ", ""]):
+        room_turn(push, MEMBER, reply, turn_id=f"p{i}")
+    assert notifications(sender) == []
+
+
+def test_a_room_lead_routing_turn_sends_no_reply(push, sender):
+    room_turn(push, LEAD, '{"assign": ["coach"]}')
+    assert notifications(sender) == []
+
+
+def test_a_room_member_reply_pushes_without_the_prompt(push, sender, keys):
+    room_turn(push, MEMBER, "On it.")
+    events = notifications(sender)
+    assert [e["kind"] for e in events] == ["reply"]
+    inner = unsealed(events[0], keys)
+    assert inner["subtitle"] == "" and inner["body"] == "On it."
+    assert "You are @" not in str(inner)
+
+
+def test_a_lead_that_assigns_itself_pushes_only_its_member_turn(push, sender, keys):
+    room_turn(push, LEAD, '{"assign": ["hermes"]}', turn_id="t1")
+    room_turn(push, MEMBER, "Done.", turn_id="t2")
+    events = notifications(sender)
+    assert [e["kind"] for e in events] == ["reply"]
+    assert unsealed(events[0], keys)["body"] == "Done."
+
+
+def test_a_room_prompt_given_as_parts_is_still_recognised(push, sender):
+    room_turn(push, [{"type": "text", "text": LEAD}], '{"assign": ["coach"]}')
+    assert notifications(sender) == []
+
+
+def test_a_quote_in_the_room_name_changes_nothing(push, sender, keys):
+    name = 'a "b" c'
+    room_turn(push, LEAD.replace("總機", name), '{"assign": ["coach"]}', turn_id="t1")
+    assert notifications(sender) == []
+    room_turn(push, MEMBER.replace("總機", name), "Real reply.", turn_id="t2")
+    events = notifications(sender)
+    assert [e["kind"] for e in events] == ["reply"]
+    assert unsealed(events[0], keys)["subtitle"] == ""
+
+
+def test_pass_text_outside_a_room_still_pushes(push, sender, keys):
+    run_turn(push, reply="(pass)")
+    events = notifications(sender)
+    assert [e["kind"] for e in events] == ["reply"]
+    assert unsealed(events[0], keys)["subtitle"] == "do it"
+
+
+def test_a_failed_room_turn_still_sends_turn_error(push, sender):
+    push.pre_llm_call(session_id="room-1", platform="bot_room", user_message=MEMBER)
+    push.on_session_end(session_id="room-1", completed=False, interrupted=False, failed=True,
+                        turn_id="t1", platform="bot_room")
+    assert [e["kind"] for e in notifications(sender)] == ["turn_error"]
