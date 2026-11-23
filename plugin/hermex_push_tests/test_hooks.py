@@ -488,3 +488,23 @@ def test_a_failed_room_turn_still_sends_turn_error(push, sender):
     push.on_session_end(session_id="room-1", completed=False, interrupted=False, failed=True,
                         turn_id="t1", platform="bot_room")
     assert [e["kind"] for e in notifications(sender)] == ["turn_error"]
+
+
+MEMORY = "<memory-context>\nthe owner's passport number is 12345\n</memory-context>"
+
+
+def test_recalled_memory_never_reaches_a_banner(push, sender, keys):
+    run_turn(push, reply=f"{MEMORY}\nAll set.")
+    inner = unsealed(notifications(sender)[0], keys)
+    assert inner["body"] == "All set." and "passport" not in str(inner)
+
+
+def test_a_room_reply_of_memory_then_pass_sends_nothing(push, sender):
+    room_turn(push, MEMBER, f"{MEMORY}\n(pass)")
+    assert notifications(sender) == []
+
+
+def test_a_room_reply_pushes_only_the_text_after_its_memory(push, sender, keys):
+    room_turn(push, MEMBER, f"{MEMORY}\nOn it.")
+    inner = unsealed(notifications(sender)[0], keys)
+    assert inner["body"] == "On it." and "passport" not in str(inner)

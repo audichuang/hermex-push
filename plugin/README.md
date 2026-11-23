@@ -336,7 +336,7 @@ reply for input would silently lose attention. `input` falls back to `clarify`
 to keep that attention banner. System compatibility follows the old Replies
 preference and Live Activity policy; snapshot session IDs remain separate.
 
-## Room turns (0.9.5)
+## Room turns (0.9.6)
 
 A `bot_room` member's turn is pushed only when it becomes a room message. The room
 hides a pass (`(pass)`, `pass.`, blank) and the lead's routing answer
@@ -344,6 +344,12 @@ hides a pass (`(pass)`, `pass.`, blank) and the lead's routing answer
 has an empty subtitle: the prompt is the room's instructions, and the banner title
 already names the bot. A failed turn still sends `turn_error`; other platforms are
 unchanged.
+
+Recalled-memory spans (`<memory-context>…</memory-context>`) are removed from every
+reply with the host's `agent.memory_context.fence_recalled_context` before the banner
+body and the pass check read it, so private memory never reaches a banner and a reply
+that is only a memory block plus `(pass)` is still a pass. A host without that function
+is used as is.
 
 Detection reads two strings from the host: the pass rule mirrors
 `gateway/hosted_room_discussion.py` (`is_pass_text`), and the lead's routing prompt

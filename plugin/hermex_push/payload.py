@@ -59,6 +59,17 @@ def _as_text(value: Any) -> str:
     return "" if value is None else str(value)
 
 
+def fence_recalled_memory(value: Any) -> str:
+    """The reply as the host delivers it: recalled-memory spans dropped. Hermes v0.23.1 has
+    `agent.memory_context.fence_recalled_context`; a host without it is used as is."""
+    text = _as_text(value)
+    try:
+        from agent.memory_context import fence_recalled_context
+    except ImportError:
+        return text
+    return fence_recalled_context(text)
+
+
 # Code is stashed behind NUL-delimited indexes first so its content stays verbatim: a fenced
 # block (closed, or running to the end of the text) or a one-line span between equal backtick runs.
 _CODE = re.compile(
