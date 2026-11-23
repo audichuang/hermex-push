@@ -21,7 +21,7 @@ from typing import Any, Callable, Optional
 
 from . import RELAY_URL_ENV
 from .keys import Keys, hermes_root, load_or_create_keys
-from .payload import notify_event, preview, progress_event
+from .payload import fence_recalled_memory, notify_event, preview, progress_event
 from .privacy import keyed_id
 from .progress import ProgressCoalescer, ProgressSnapshot
 from .rooms import is_lead_dispatch, is_pass
@@ -307,7 +307,9 @@ class HermexPush:
         try:
             with self._lock:
                 self._remember_platform(session_id, platform)
-                self._reply_by_session.remember(session_id, (user_message, assistant_response))
+                # The host strips recalled memory from replies it delivers, so the banner and the
+                # room pass check see the same text.
+                self._reply_by_session.remember(session_id, (user_message, fence_recalled_memory(assistant_response)))
         except Exception:
             logger.warning("hermex-push: post_llm_call failed", exc_info=True)
 
