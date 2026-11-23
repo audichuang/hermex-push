@@ -202,7 +202,9 @@ async def _run_git(path: str, args: list[str]) -> JSONResponse:
     from hermes_cli import web_git
     from hermes_cli.web_server_files import _fs_path
 
-    # Newer hosts make ``_git`` read-only and add ``_git_write`` for mutating calls; 0.23.1 has only ``_git``.
+    # Newer hosts' ``_git`` empties the repository's clean/smudge filters and refuses to run when filter
+    # discovery fails, so mutating routes use ``_git_write`` (present from Hermes v0.23.2); v0.23.1 has
+    # only ``_git``, hence the fallback.
     run = getattr(web_git, "_git_write", None) or web_git._git
     cwd = str(_fs_path(path))
     code, out, err = await asyncio.to_thread(run, cwd, args, timeout=GIT_REMOTE_TIMEOUT_S)
